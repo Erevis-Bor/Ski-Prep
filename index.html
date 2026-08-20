@@ -2,53 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#111111" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="theme-color" content="#081018" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Ski Prep" />
   <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="stylesheet" href="styles.css" />
   <title>Ski Prep</title>
 </head>
 <body>
-  <main class="shell">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">LES CARROZ 2027</p>
-        <h1>Ski Prep</h1>
-        <p class="sub">20 weeks. Keep showing up.</p>
-      </div>
-      <div class="ring" id="ring"><span id="ringText">0%</span></div>
-    </header>
-
-    <section class="stats">
-      <div class="stat"><strong id="doneCount">0</strong><span>done</span></div>
-      <div class="stat"><strong id="skipCount">0</strong><span>skipped</span></div>
-      <div class="stat"><strong id="streakCount">0</strong><span>week streak</span></div>
-    </section>
-
-    <section class="controls card">
-      <label>Current week
-        <select id="weekSelect"></select>
-      </label>
-      <button id="resetBtn" class="ghost">Reset progress</button>
-    </section>
-
-    <section id="weekMeta" class="week-meta"></section>
-    <section id="sessionList" class="session-list"></section>
-
-    <section class="card notes">
-      <label for="weekNotes">Week notes</label>
-      <textarea id="weekNotes" placeholder="How did the week go? What hurt? What improved?"></textarea>
-    </section>
-
-    <section class="card honesty">
-      <h2>Honesty check</h2>
-      <p id="honestyText">Complete sessions, skip them when life happens, but don't leave them untouched.</p>
-    </section>
-  </main>
-  <script src="data.js"></script>
+  <div id="app"></div>
+  <nav id="tabs" class="tabs"></nav>
   <script src="app.js"></script>
 </body>
 </html>
