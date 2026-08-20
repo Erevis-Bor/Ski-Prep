@@ -1,32 +1,36 @@
-# Ski Prep PWA
+# Gareth's Ski Prep v2
 
-A tiny installable iPhone-friendly training tracker for a 20-week ski-prep plan.
+An installable iPhone PWA for the current ski-prep training system.
 
-## What it does
-- Shows the full 20-week plan
-- Lets you mark every session Done / Skipped / Clear
-- Stores progress and week notes in browser localStorage
-- Shows done count, skipped count, completion percentage, and a simple week streak
-- Works offline after first load
-- Can be installed to iPhone Home Screen
+## What changed from the proof of concept
+This version is designed around the job now:
+- **Today**: next useful session, weekly adherence, countdown, current phase, ski focus
+- **Train**: actual Workout A / B logging with weight, reps and optional RIR; Snozone; cardio; other activity
+- **Progress**: bodyweight trend, adherence, training counts, ski notes
+- **Plan**: phased programme and live set prescriptions
+- **More**: JSON export/restore and local data controls
 
-## Host on GitHub Pages
-1. Create a new GitHub repository, e.g. `ski-prep`.
-2. Upload all files from this folder to the repository root.
-3. Commit to `main`.
-4. In GitHub: Settings → Pages.
-5. Under Build and deployment, choose `Deploy from a branch`.
-6. Choose branch `main`, folder `/ (root)`, then Save.
-7. GitHub will give you a Pages URL.
+## Training logic included
+- A/B full-body structure
+- Re-entry phase starts established exercises at 2 working sets
+- Calf + loaded inversion rehab remains 3 sets
+- Established exercises move toward 3 sets after re-entry
+- Bulgarian split squat and slow step-down are deliberately not forced to 3 sets
+- Snozone counts as lower-body training load
+- Exercise suggestions use the last logged session and double-progression logic
+- Historic June performances are used only as a reference until new sessions are logged
 
-## Install on iPhone
-1. Open your GitHub Pages URL in Safari.
-2. Tap Share.
-3. Tap **Add to Home Screen**.
-4. Open it from the new Ski Prep icon.
+## Hosting on GitHub Pages
+1. Create a GitHub repository, e.g. `ski-prep`.
+2. Upload the **contents** of this folder to the repository root.
+3. GitHub → Settings → Pages.
+4. Build and deployment → **Deploy from a branch**.
+5. Select `main` and `/ (root)`.
+6. Open the Pages URL in Safari on iPhone.
+7. Share → **Add to Home Screen**.
 
-## Important storage note
-Progress is stored locally on that device/browser. Clearing Safari site data, deleting the PWA, or using another device will not sync your progress.
+## Storage
+Data is stored in IndexedDB on the phone/browser. Use **More → Export JSON** as a backup.
 
-## Editing the plan
-The training plan lives in `data.js`. You can edit week titles, sessions, details and weight targets without changing the app logic.
+## Notes
+This is deliberately dependency-free so GitHub Pages can host it directly and future edits remain easy.
