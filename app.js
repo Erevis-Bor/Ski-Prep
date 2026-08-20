@@ -1,384 +1,81 @@
-
-const APP_VERSION = "2.0.0";
-const TRIP_DATE = new Date("2027-01-09T00:00:00");
-const START_DATE = new Date("2026-08-24T00:00:00");
-
-const PLAN = {
-  phases: [
-    {id:"reentry",name:"Re-entry",from:"2026-08-24",to:"2026-09-06",goal:"Return without chasing old volume.",rules:["2 gym sessions/week","Established lifts: 2 work sets","BSS + step-down: 2 sets","Calf + inversion rehab: 3 sets","3–4 RIR initially"]},
-    {id:"build",name:"Build",from:"2026-09-07",to:"2026-10-31",goal:"Rebuild strength while skiing weekly.",rules:["A + B are the baseline","Established lifts move toward 3 sets","BSS + step-down stay at 2 sets initially","Progress reps/load before adding volume","1 Snozone session/week"]},
-    {id:"control",name:"Ski strength & control",from:"2026-11-01",to:"2026-11-29",goal:"Turn strength into unilateral and eccentric control.",rules:["Maintain main strength","Progress BSS and slow step-down quality","Add lateral work by substitution, not pile-on volume","Snozone technique remains a priority"]},
-    {id:"conditioning",name:"Ski conditioning",from:"2026-11-30",to:"2026-12-27",goal:"Keep technique when the legs are tired.",rules:["Maintain strength","Small ski-endurance dose only","Longer / more continuous Snozone sessions","Power is optional, not mandatory"]},
-    {id:"taper",name:"Taper",from:"2026-12-28",to:"2027-01-09",goal:"Arrive in Les Carroz fresh.",rules:["Reduce lower-body gym volume","Easy final Snozone","No leg-destroying finishers","Prioritise sleep and normal movement"]}
-  ],
-  weeklyTargets:{strength:2,snow:1,cardio:2},
-  workouts:{
-    A:{
-      name:"Workout A",subtitle:"Squat + unilateral",
-      exercises:[
-        {name:"Hack Squat",key:"hack",repMin:6,repMax:10,sets:2,eventualSets:3,startWeight:42.5,increment:5,note:"Primary lower-body strength. Hack first."},
-        {name:"Chest Fly",key:"fly",repMin:8,repMax:10,sets:2,eventualSets:3,startWeight:67.5,increment:5},
-        {name:"Pull Up",key:"pullup",repMin:4,repMax:8,sets:2,eventualSets:3,startWeight:0,increment:1,note:"Bodyweight. Progress reps first."},
-        {name:"Bulgarian Split Squat",key:"bss",repMin:8,repMax:10,sets:2,eventualSets:2,startWeight:0,increment:2.5,note:"Keep at 2 sets initially. Quality > misery."},
-        {name:"Lateral Raise Machine",key:"latraise",repMin:10,repMax:12,sets:2,eventualSets:3,startWeight:30,increment:2.5},
-        {name:"Loaded Inversion",key:"inversion",repMin:12,repMax:12,sets:3,eventualSets:3,startWeight:27.5,increment:2.5,note:"Rehab work. Retain 3 sets."},
-        {name:"Standing Calf Raise",key:"standcalf",repMin:8,repMax:12,sets:3,eventualSets:3,startWeight:52.5,increment:5,note:"Rehab / ankle capacity."},
-        {name:"Back Extension",key:"backext",repMin:10,repMax:12,sets:2,eventualSets:3,startWeight:0,increment:5},
-        {name:"DB Curl",key:"curl",repMin:10,repMax:12,sets:2,eventualSets:3,startWeight:10,increment:2.5,optional:true}
-      ]
-    },
-    B:{
-      name:"Workout B",subtitle:"Hamstrings + eccentric",
-      exercises:[
-        {name:"Seated Leg Curl",key:"legcurl",repMin:8,repMax:12,sets:2,eventualSets:3,startWeight:47.5,increment:5},
-        {name:"Incline Chest Press",key:"incline",repMin:6,repMax:10,sets:2,eventualSets:3,startWeight:75,increment:5},
-        {name:"Seated Row",key:"row",repMin:8,repMax:10,sets:2,eventualSets:3,startWeight:42.5,increment:5},
-        {name:"Slow Step-down",key:"stepdown",repMin:8,repMax:10,sets:2,eventualSets:2,startWeight:0,increment:2.5,note:"3–4 sec lowering. Eccentric control, not a max-strength lift."},
-        {name:"Lateral Raise Machine",key:"latraise",repMin:10,repMax:12,sets:2,eventualSets:3,startWeight:30,increment:2.5},
-        {name:"Loaded Inversion",key:"inversion",repMin:12,repMax:12,sets:3,eventualSets:3,startWeight:27.5,increment:2.5},
-        {name:"Seated Calf Raise",key:"seatcalf",repMin:10,repMax:12,sets:3,eventualSets:3,startWeight:47.5,increment:5},
-        {name:"Triceps Pushdown",key:"triceps",repMin:8,repMax:12,sets:2,eventualSets:3,startWeight:47.5,increment:5},
-        {name:"Knee Raise",key:"kneeraise",repMin:8,repMax:15,sets:2,eventualSets:3,startWeight:0,increment:1}
-      ]
-    }
-  },
-  skiFocus:[
-    "Quiet upper body","Outside ski pressure","Turn shape & speed control","Short-radius turns",
-    "Variable turn radius","Pole plants","Instructor feedback","Slow skiing & control",
-    "Technique under fatigue","Steeper-section control"
-  ]
-};
-
-const HISTORICAL = {
-  hack:["60×8","60×7","60×6"], fly:["84×10","84×10","84×8"], pullup:["6","6","5"],
-  latraise:["41×12","41×12","41×9"], inversion:["30×12","30×12","30×12"],
-  standcalf:["55×8","70×8","70×8"], curl:["12.5×12","12.5×12","12.5×10"],
-  backext:["10×12","10×12","10×12"], incline:["80×8","100×8","110×4"],
-  row:["55×8","60×8"], legcurl:["57×8","57×8","57×8"], seatcalf:["60×12","60×12","60×12"],
-  triceps:["57×8","66×8","60×8"], kneeraise:["16","15","10"]
-};
-
-class DB {
-  constructor(){this.db=null}
-  async init(){
-    this.db = await new Promise((resolve,reject)=>{
-      const r=indexedDB.open("skiPrepV2",1);
-      r.onupgradeneeded=()=>{
-        const d=r.result;
-        ["sessions","weights","settings"].forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:"id",autoIncrement:true})});
-      };
-      r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error);
-    });
-  }
-  store(name,mode="readonly"){return this.db.transaction(name,mode).objectStore(name)}
-  async all(name){return new Promise((res,rej)=>{const r=this.store(name).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
-  async add(name,val){return new Promise((res,rej)=>{const r=this.store(name,"readwrite").add(val);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
-  async put(name,val){return new Promise((res,rej)=>{const r=this.store(name,"readwrite").put(val);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
-  async clear(name){return new Promise((res,rej)=>{const r=this.store(name,"readwrite").clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
-}
-const db=new DB();
-
-const S={tab:"today", modal:null, editingSession:null};
-const $=s=>document.querySelector(s);
-const fmtDate=d=>new Date(d).toLocaleDateString("en-GB",{day:"numeric",month:"short"});
-const iso=d=>new Date(d).toISOString();
-const today=()=>new Date();
-const daysBetween=(a,b)=>Math.ceil((b-a)/86400000);
-
-function currentPhase(){
-  const n=today();
-  return PLAN.phases.find(p=>n>=new Date(p.from+"T00:00:00")&&n<=new Date(p.to+"T23:59:59")) || PLAN.phases[0];
-}
-function weekStart(d=new Date()){
-  const x=new Date(d); const day=(x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x;
-}
-function sessionType(s){
-  if(s.kind==="gym") return "strength";
-  if(s.kind==="snow") return "snow";
-  if(s.kind==="cardio") return "cardio";
-  return "other";
-}
-function inThisWeek(s){const ws=weekStart(),we=new Date(ws);we.setDate(ws.getDate()+7);const d=new Date(s.date);return d>=ws&&d<we}
-function workoutSetsForPhase(ex){
-  const p=currentPhase().id;
-  if(p==="reentry") return ex.sets;
-  if(p==="build"||p==="control"||p==="conditioning") return ex.eventualSets;
-  return Math.max(1,Math.min(ex.eventualSets,2));
-}
-async function lastExercisePerformance(key){
-  const sessions=(await db.all("sessions")).filter(s=>s.kind==="gym"&&s.status!=="skipped"&&s.exercises);
-  sessions.sort((a,b)=>new Date(b.date)-new Date(a.date));
-  for(const s of sessions){
-    const e=s.exercises.find(x=>x.key===key);
-    if(e && e.sets.some(x=>x.reps||x.weight)) return e.sets.filter(x=>x.reps||x.weight);
-  }
-  return null;
-}
-function progressionSuggestion(ex,last){
-  if(!last||!last.length) return {weight:ex.startWeight,reps:ex.repMin,text:`Start around ${ex.startWeight||"bodyweight"} · ${ex.repMin} reps`};
-  const work=last.filter(x=>x.reps);
-  const weight=Math.max(...work.map(x=>Number(x.weight)||0),0);
-  const allTop=work.length>=Math.min(workoutSetsForPhase(ex),2)&&work.every(x=>Number(x.reps)>=ex.repMax);
-  if(ex.key==="pullup"||weight===0){
-    const best=Math.min(...work.map(x=>Number(x.reps)||0));
-    return {weight, reps:Math.min(ex.repMax,best+1), text:allTop?"Rep range topped — keep quality high":`Aim to beat last reps`};
-  }
-  return allTop
-    ? {weight:weight+ex.increment,reps:ex.repMin,text:`Rep range topped → try ${weight+ex.increment} kg`}
-    : {weight,reps:ex.repMin,text:`Stay at ${weight} kg and beat reps`};
-}
-
-function nav(){
-  const tabs=[["today","⌂","Today"],["train","＋","Train"],["progress","↗","Progress"],["plan","≡","Plan"],["more","•••","More"]];
-  $("#tabs").innerHTML=tabs.map(([id,ic,l])=>`<button class="tab ${S.tab===id?"on":""}" data-tab="${id}"><b>${ic}</b>${l}</button>`).join("");
-  document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;render()});
-}
-async function render(){
-  nav();
-  if(S.tab==="today") await renderToday();
-  if(S.tab==="train") await renderTrain();
-  if(S.tab==="progress") await renderProgress();
-  if(S.tab==="plan") await renderPlan();
-  if(S.tab==="more") await renderMore();
-}
-
-async function renderToday(){
-  const sessions=await db.all("sessions"), weights=await db.all("weights");
-  const week=sessions.filter(inThisWeek);
-  const counts={strength:0,snow:0,cardio:0};
-  week.filter(s=>s.status!=="skipped").forEach(s=>{const t=sessionType(s);if(counts[t]!=null)counts[t]++});
-  const targetTotal=5, done=Math.min(counts.strength,2)+Math.min(counts.snow,1)+Math.min(counts.cardio,2);
-  const phase=currentPhase();
-  const days=Math.max(0,daysBetween(today(),TRIP_DATE));
-  const latestW=weights.sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
-  const lastStrength=week.filter(s=>s.kind==="gym"&&s.status!=="skipped").sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
-  const nextWorkout=lastStrength?.workout==="A"?"B":"A";
-  const focusIndex=Math.max(0,Math.floor((today()-START_DATE)/(14*86400000)))%PLAN.skiFocus.length;
-  document.querySelector("#app").innerHTML=`
-    <div class="topbar"><div><div class="eyebrow">Gareth's Ski Prep</div><h1>Today</h1></div><span class="phase-pill">${phase.name}</span></div>
-    <section class="hero">
-      <div class="hero-grid"><div><div class="countdown">${days}<span>days to Les Carroz</span></div></div><div style="text-align:right"><div class="kicker">Current phase</div><strong>${phase.name}</strong><div class="small muted">${phase.goal}</div></div></div>
-    </section>
-    <section class="card">
-      <div class="item-head"><div><h2>This week</h2><div class="muted small">Do the work. Move it when life happens. Log the truth.</div></div><strong>${done}/${targetTotal}</strong></div>
-      ${scoreRow("🏋️","Strength",counts.strength,2)}
-      ${scoreRow("⛷️","Snozone",counts.snow,1)}
-      ${scoreRow("♥","Cardio",counts.cardio,2)}
-      <div class="progressbar"><div style="width:${done/targetTotal*100}%"></div></div>
-    </section>
-    <section class="card next-card">
-      <div class="session-type">Next useful session</div>
-      <h2 style="margin-top:5px">${PLAN.workouts[nextWorkout].name}</h2>
-      <p class="muted">${PLAN.workouts[nextWorkout].subtitle} · ${phase.id==="reentry"?"re-entry volume":"current phase prescription"}</p>
-      <button class="btn block" id="startNext">Start ${nextWorkout}</button>
-    </section>
-    <div class="grid2">
-      <section class="card metric"><span>Latest weight</span><strong>${latestW?latestW.kg.toFixed(1)+" kg":"—"}</strong><button class="btn small secondary" id="logWeight" style="margin-top:10px">Log weight</button></section>
-      <section class="card metric"><span>Ski focus</span><strong style="font-size:18px">${PLAN.skiFocus[focusIndex]}</strong><button class="btn small secondary" id="logSnow" style="margin-top:10px">Log Snozone</button></section>
-    </div>
-    <section class="card soft">
-      <div class="kicker">Recovery rule</div>
-      <p style="margin-bottom:0">Snozone counts as lower-body load. If your legs or ankle are unusually sore, reduce the next lower-body session rather than forcing the spreadsheet.</p>
-    </section>`;
-  $("#startNext").onclick=()=>startGym(nextWorkout);
-  $("#logWeight").onclick=()=>weightModal();
-  $("#logSnow").onclick=()=>snowModal();
-}
-function scoreRow(icon,name,n,target){
-  return `<div class="score-row"><div class="score-name"><span>${icon}</span><span>${name}</span></div><div><span class="badge ${n>=target?"ok":""}">${Math.min(n,target)}/${target}</span></div></div>`;
-}
-
-async function renderTrain(){
-  document.querySelector("#app").innerHTML=`
-    <div class="topbar"><div><div class="eyebrow">Training</div><h1>Train</h1><div class="muted">Choose what you're actually doing today.</div></div></div>
-    <div class="list">
-      ${trainCard("A","🏋️",PLAN.workouts.A.name,PLAN.workouts.A.subtitle)}
-      ${trainCard("B","🏋️",PLAN.workouts.B.name,PLAN.workouts.B.subtitle)}
-      ${trainCard("snow","⛷️","Snozone","Technique + snow time")}
-      ${trainCard("cardio","♥","Cardio","Easy aerobic or intervals")}
-      ${trainCard("other","＋","Other activity","Walk, hike, extra session, anything useful")}
-    </div>`;
-  document.querySelectorAll("[data-start]").forEach(b=>b.onclick=()=>{
-    const t=b.dataset.start;
-    if(t==="A"||t==="B")startGym(t);
-    if(t==="snow")snowModal();
-    if(t==="cardio")cardioModal();
-    if(t==="other")otherModal();
-  });
-}
-function trainCard(id,icon,title,sub){
-  return `<section class="card"><div class="item-head"><div><div class="session-type">${icon} ${id==="A"||id==="B"?"Strength":"Activity"}</div><h2 style="margin:5px 0">${title}</h2><div class="muted">${sub}</div></div><button class="btn small" data-start="${id}">Start</button></div></section>`;
-}
-
-async function startGym(which){
-  const w=PLAN.workouts[which];
-  const data=[];
-  for(const ex of w.exercises){
-    const last=await lastExercisePerformance(ex.key);
-    const sug=progressionSuggestion(ex,last);
-    const n=workoutSetsForPhase(ex);
-    data.push({...ex,n,last,sug,sets:Array.from({length:n},()=>({weight:sug.weight||"",reps:"",rir:""}))});
-  }
-  S.editingSession={kind:"gym",workout:which,date:new Date().toISOString(),status:"complete",exercises:data};
-  renderGymLogger();
-}
-function renderGymLogger(){
-  const s=S.editingSession,w=PLAN.workouts[s.workout];
-  document.querySelector("#app").innerHTML=`
-    <div class="topbar"><div><div class="eyebrow">${currentPhase().name}</div><h1>${w.name}</h1><div class="muted">${w.subtitle}</div></div><button class="btn ghost small" id="cancel">Cancel</button></div>
-    <div class="banner"><strong>Today's rule:</strong> ${currentPhase().id==="reentry"?"Leave 3–4 reps in reserve. This is re-entry, not a test.":"Progress performance before adding more work."}</div>
-    <section class="card">
-      ${s.exercises.map((ex,ei)=>exerciseHTML(ex,ei)).join("")}
-    </section>
-    <div class="field"><label>Session note</label><textarea id="sessionNote" placeholder="How did it feel? Anything to change next time?"></textarea></div>
-    <div class="actions"><button class="btn" id="saveGym">Save workout</button><button class="btn warn" id="partialGym">Save as partial</button><button class="btn ghost" id="skipGym">Skip today</button></div>`;
-  $("#cancel").onclick=()=>{S.editingSession=null;S.tab="today";render()};
-  document.querySelectorAll(".set-input").forEach(i=>i.oninput=e=>{
-    const {ei,si,field}=e.target.dataset;
-    S.editingSession.exercises[+ei].sets[+si][field]=e.target.value;
-  });
-  $("#saveGym").onclick=()=>saveGym("complete");
-  $("#partialGym").onclick=()=>saveGym("partial");
-  $("#skipGym").onclick=()=>saveGym("skipped");
-}
-function exerciseHTML(ex,ei){
-  const prev=ex.last?.length?ex.last.map(x=>`${x.weight||""}${x.weight?"×":""}${x.reps}`).join(" · "):(HISTORICAL[ex.key]?.join(" · ")||"No recent log");
-  return `<div class="exercise">
-    <div class="exercise-title"><div><h3>${ex.name}${ex.optional?' <span class="badge">optional</span>':""}</h3><div class="previous">Previous: ${prev}</div><div class="small" style="color:var(--accent2);margin-top:3px">${ex.sug.text}</div>${ex.note?`<div class="small muted" style="margin-top:4px">${ex.note}</div>`:""}</div><span class="badge">${ex.n} sets</span></div>
-    ${ex.sets.map((x,si)=>`<div class="set-row"><span class="set-num">${si+1}</span><input class="set-input" data-ei="${ei}" data-si="${si}" data-field="weight" inputmode="decimal" placeholder="kg" value="${x.weight}"><input class="set-input" data-ei="${ei}" data-si="${si}" data-field="reps" inputmode="numeric" placeholder="reps"><input class="set-input" data-ei="${ei}" data-si="${si}" data-field="rir" inputmode="numeric" placeholder="RIR"><span class="small muted">✓</span></div>`).join("")}
-  </div>`;
-}
-async function saveGym(status){
-  const s=S.editingSession;s.status=status;s.note=$("#sessionNote")?.value||"";
-  s.exercises=s.exercises.map(e=>({name:e.name,key:e.key,sets:e.sets}));
-  await db.add("sessions",s); S.editingSession=null; S.tab="today"; render();
-}
-
-function shell(title,eyebrow,body){
-  document.querySelector("#app").innerHTML=`<div class="topbar"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1></div><button class="btn ghost small" id="closeModal">Cancel</button></div>${body}`;
-  $("#closeModal").onclick=()=>{S.tab="today";render()};
-}
-function snowModal(){
-  const idx=Math.max(0,Math.floor((today()-START_DATE)/(14*86400000)))%PLAN.skiFocus.length;
-  shell("Snozone","Snow session",`
-    <section class="card"><div class="kicker">Suggested focus</div><h2>${PLAN.skiFocus[idx]}</h2><div class="muted">Treat this as training load, not free recovery.</div></section>
-    <div class="field"><label>Duration (minutes)</label><input id="snowMin" type="number" value="60"></div>
-    <div class="grid2"><div class="field"><label>Effort /10</label><input id="snowEffort" type="number" min="1" max="10" value="6"></div><div class="field"><label>Leg fatigue /10</label><input id="snowLegs" type="number" min="1" max="10" value="5"></div></div>
-    <div class="field"><label>Technique focus</label><input id="snowFocus" value="${PLAN.skiFocus[idx]}"></div>
-    <div class="field"><label>What clicked?</label><textarea id="snowGood"></textarea></div>
-    <div class="field"><label>What struggled?</label><textarea id="snowBad"></textarea></div>
-    <button class="btn block" id="saveSnow">Save Snozone session</button>`);
-  $("#saveSnow").onclick=async()=>{await db.add("sessions",{kind:"snow",date:iso(new Date()),status:"complete",minutes:+$("#snowMin").value,effort:+$("#snowEffort").value,legFatigue:+$("#snowLegs").value,focus:$("#snowFocus").value,good:$("#snowGood").value,bad:$("#snowBad").value});S.tab="today";render()};
-}
-function cardioModal(){
-  shell("Cardio","Aerobic work",`
-    <div class="field"><label>Type</label><select id="cType"><option>Easy / Zone 2</option><option>Intervals</option><option>Walk</option><option>Bike</option><option>Elliptical</option><option>Other</option></select></div>
-    <div class="grid2"><div class="field"><label>Minutes</label><input id="cMin" type="number" value="40"></div><div class="field"><label>Effort /10</label><input id="cEff" type="number" min="1" max="10" value="4"></div></div>
-    <div class="field"><label>Notes</label><textarea id="cNote"></textarea></div>
-    <button class="btn block" id="saveC">Save cardio</button>`);
-  $("#saveC").onclick=async()=>{await db.add("sessions",{kind:"cardio",date:iso(new Date()),status:"complete",activity:$("#cType").value,minutes:+$("#cMin").value,effort:+$("#cEff").value,note:$("#cNote").value});S.tab="today";render()};
-}
-function otherModal(){
-  shell("Other activity","Log reality",`
-    <div class="field"><label>What did you do?</label><input id="oName" placeholder="e.g. 12 km hike"></div>
-    <div class="field"><label>Minutes</label><input id="oMin" type="number" value="60"></div>
-    <div class="field"><label>Notes</label><textarea id="oNote"></textarea></div>
-    <button class="btn block" id="saveO">Save activity</button>`);
-  $("#saveO").onclick=async()=>{await db.add("sessions",{kind:"other",date:iso(new Date()),status:"complete",activity:$("#oName").value,minutes:+$("#oMin").value,note:$("#oNote").value});S.tab="today";render()};
-}
-function weightModal(){
-  shell("Log weight","Body trend",`
-    <section class="card soft"><div class="muted">Individual weigh-ins are noise. The trend is what matters.</div></section>
-    <div class="field"><label>Weight (kg)</label><input id="wKg" type="number" step=".1" value="102.5"></div>
-    <button class="btn block" id="saveW">Save weight</button>`);
-  $("#saveW").onclick=async()=>{await db.add("weights",{date:iso(new Date()),kg:+$("#wKg").value});S.tab="today";render()};
-}
-
-async function renderProgress(){
-  const sessions=(await db.all("sessions")).sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const weights=(await db.all("weights")).sort((a,b)=>new Date(a.date)-new Date(b.date));
-  const startW=weights[0]?.kg||102.5, latestW=weights.at(-1)?.kg;
-  const snow=sessions.filter(s=>s.kind==="snow"&&s.status!=="skipped");
-  const gyms=sessions.filter(s=>s.kind==="gym"&&s.status!=="skipped");
-  const cardio=sessions.filter(s=>s.kind==="cardio"&&s.status!=="skipped");
-  const weeks = adherenceWeeks(sessions);
-  document.querySelector("#app").innerHTML=`
-    <div class="topbar"><div><div class="eyebrow">Evidence, not vibes</div><h1>Progress</h1></div></div>
-    <div class="grid3">
-      <section class="card metric"><span>Gym</span><strong>${gyms.length}</strong></section>
-      <section class="card metric"><span>Snow</span><strong>${snow.length}</strong></section>
-      <section class="card metric"><span>Cardio</span><strong>${cardio.length}</strong></section>
-    </div>
-    <section class="card"><div class="item-head"><div><h2>Weight trend</h2><div class="muted">${latestW?`${(latestW-startW).toFixed(1)} kg since first log`:"Start logging to see the trend."}</div></div>${latestW?`<strong>${latestW.toFixed(1)} kg</strong>`:""}</div>${weightChart(weights)}</section>
-    <section class="card"><h2>Weekly adherence</h2>${weeks.length?weeks.slice(-8).reverse().map(w=>`<div class="score-row"><span>${w.label}</span><span class="badge ${w.score>=80?"ok":""}">${w.score}%</span></div>`).join(""):`<div class="muted">Your completed sessions will build this view.</div>`}</section>
-    <section class="card"><h2>Ski development</h2>${snow.length?snow.slice(0,5).map(s=>`<div class="item" style="margin-bottom:8px"><div class="item-head"><strong>${fmtDate(s.date)}</strong><span class="badge">${s.minutes||0} min</span></div><div class="small" style="color:var(--accent);margin-top:5px">${s.focus||"Ski session"}</div>${s.good?`<div class="small muted">Clicked: ${esc(s.good)}</div>`:""}</div>`).join(""):`<div class="muted">Log Snozone sessions to build your technical history.</div>`}</section>`;
-}
-function adherenceWeeks(sessions){
-  const map={};
-  sessions.forEach(s=>{
-    const ws=weekStart(new Date(s.date)),key=ws.toISOString().slice(0,10);
-    map[key]??={date:ws,strength:0,snow:0,cardio:0};
-    if(s.status==="skipped")return;
-    const t=sessionType(s);if(map[key][t]!=null)map[key][t]++;
-  });
-  return Object.values(map).sort((a,b)=>a.date-b.date).map(w=>{
-    const done=Math.min(w.strength,2)+Math.min(w.snow,1)+Math.min(w.cardio,2);
-    return {...w,label:`w/c ${fmtDate(w.date)}`,score:Math.round(done/5*100)};
-  });
-}
-function weightChart(weights){
-  if(weights.length<2)return `<div class="muted" style="padding:28px 0;text-align:center">Two weigh-ins are enough to start a trend.</div>`;
-  const last=weights.slice(-20), vals=last.map(x=>x.kg),min=Math.min(...vals)-1,max=Math.max(...vals)+1,w=500,h=150,p=14;
-  const pts=last.map((x,i)=>`${p+i*(w-2*p)/(last.length-1)},${h-p-(x.kg-min)*(h-2*p)/(max-min)}`).join(" ");
-  return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="#8fd3ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
-const esc=s=>String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
-
-async function renderPlan(){
-  const p=currentPhase();
-  document.querySelector("#app").innerHTML=`
-    <div class="topbar"><div><div class="eyebrow">Programme</div><h1>Plan</h1><div class="muted">Stable framework. Progressive emphasis.</div></div></div>
-    <section class="card"><div class="kicker">Default week</div><h2 style="margin-top:5px">2 strength · 1 snow · 2 cardio</h2><p class="muted">A and B are the baseline. Snozone is a lower-body exposure. A third gym day is optional, not owed.</p></section>
-    <div class="section-title"><h2>Phases</h2></div>
-    <section class="card">${PLAN.phases.map(x=>`<div class="phase ${x.id===p.id?"current":""}"><h3>${x.name}</h3><div class="small muted">${fmtDate(x.from)} → ${fmtDate(x.to)}</div><p>${x.goal}</p><div class="small muted">${x.rules.join(" · ")}</div></div>`).join("")}</section>
-    <div class="section-title"><h2>Workout A</h2><span class="pill">Squat + unilateral</span></div>
-    ${planWorkout("A")}
-    <div class="section-title"><h2>Workout B</h2><span class="pill">Hamstrings + eccentric</span></div>
-    ${planWorkout("B")}
-    <section class="card soft"><div class="kicker">Volume principle</div><p style="margin-bottom:0">Established exercises can return toward 3 sets. BSS and step-downs do not automatically need 3. When ski-specific work increases later, substitute or reshape volume rather than endlessly adding more.</p></section>`;
-}
-function planWorkout(k){
-  return `<section class="card">${PLAN.workouts[k].exercises.map(e=>`<div class="score-row"><div><strong>${e.name}</strong>${e.note?`<div class="small muted">${e.note}</div>`:""}</div><span class="badge">${workoutSetsForPhase(e)} × ${e.repMin}–${e.repMax}</span></div>`).join("")}</section>`;
-}
-
-async function renderMore(){
-  const sessions=await db.all("sessions"),weights=await db.all("weights");
-  document.querySelector("#app").innerHTML=`
-    <div class="topbar"><div><div class="eyebrow">Data & controls</div><h1>More</h1></div></div>
-    <section class="card"><h2>Backup</h2><p class="muted">All training data lives on this device. Export a backup occasionally.</p><div class="actions"><button class="btn secondary" id="export">Export JSON</button><label class="btn secondary" style="display:inline-block;color:var(--text);margin:0">Restore JSON<input type="file" id="restore" accept=".json" hidden></label></div></section>
-    <section class="card"><h2>Data</h2><div class="score-row"><span>Sessions</span><strong>${sessions.length}</strong></div><div class="score-row"><span>Weight logs</span><strong>${weights.length}</strong></div><div class="score-row"><span>App version</span><strong>${APP_VERSION}</strong></div></section>
-    <section class="card"><h2>Principles baked into this app</h2><p class="muted">Progress reps/load before chasing volume. Snozone counts as training. A/B remains full-body. Rehab volume stays deliberate. Ski-specific work is phased in instead of dumped on top.</p></section>
-    <section class="card"><h2>Danger zone</h2><button class="btn danger" id="erase">Erase all local data</button></section>`;
-  $("#export").onclick=async()=>{
-    const data={version:APP_VERSION,exportedAt:iso(new Date()),sessions:await db.all("sessions"),weights:await db.all("weights")};
-    const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");
-    a.href=url;a.download=`ski-prep-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);
-  };
-  $("#restore").onchange=async e=>{
-    const f=e.target.files[0];if(!f)return;
-    const data=JSON.parse(await f.text());
-    if(!confirm("Restore this backup? Existing local sessions and weights will be replaced."))return;
-    await db.clear("sessions");await db.clear("weights");
-    for(const x of data.sessions||[]) {delete x.id;await db.add("sessions",x)}
-    for(const x of data.weights||[]) {delete x.id;await db.add("weights",x)}
-    alert("Backup restored.");render();
-  };
-  $("#erase").onclick=async()=>{if(confirm("Delete all local training data?")&&confirm("Really delete it?")){await db.clear("sessions");await db.clear("weights");render()}};
-}
-
-(async function(){
-  await db.init();
-  if((await db.all("weights")).length===0) await db.add("weights",{date:"2026-08-20T06:39:47.000Z",kg:102.5});
-  if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
-  render();
-})();
+const VERSION="3.0.0", DB_NAME="garethTrainingV3";
+const GOALS_DEFAULT=[{id:"lescarroz",name:"Les Carroz",date:"2027-01-09",type:"ski"},{id:"flaine",name:"Flaine",date:"2027-03-27",type:"ski"}];
+const PHASES_DEFAULT=[
+{id:"reentry",name:"Re-entry",from:"2026-08-24",to:"2026-09-06",summary:"Rebuild consistency without chasing old fatigue.",rules:["2 strength sessions","Established lifts: 2 work sets","Rehab work: 3 sets","BSS + slow step-down: 2 sets","3–4 RIR initially","1 Snozone + 2 aerobic sessions"]},
+{id:"strength",name:"Strength rebuild",from:"2026-09-07",to:"2026-10-18",summary:"Return established exercises toward normal volume and progress performance.",rules:["Established movements move toward 3 work sets","BSS + step-down remain 2 initially","Progress reps/load before adding volume","Weekly Snozone","Weight loss remains a priority"]},
+{id:"control",name:"Ski strength & control",from:"2026-10-19",to:"2026-11-29",summary:"Keep full-body strength while increasing unilateral, eccentric and lateral control.",rules:["Maintain main strength","Progress BSS and step-down quality","Introduce lateral work by substitution","Do not endlessly add lower-body volume","Weekly Snozone technique"]},
+{id:"conditioning",name:"Ski conditioning",from:"2026-11-30",to:"2026-12-20",summary:"Build the ability to maintain controlled skiing when the legs fatigue.",rules:["Maintain strength","Small endurance dose","Longer / continuous Snozone work","Power only if ankle and recovery are excellent"]},
+{id:"xmas",name:"Christmas flexibility",from:"2026-12-21",to:"2027-01-01",summary:"Maintain rather than forcing fat loss or perfect training.",rules:["Projection assumes maintenance","Train when practical","No compensation for higher-food days","Keep some movement","Resume normal targets afterwards"]},
+{id:"taper",name:"Les Carroz taper",from:"2027-01-02",to:"2027-01-08",summary:"Arrive fresh.",rules:["Reduce lower-body volume","Easy final snow session","No leg-destroying work","Prioritise sleep and recovery"]},
+{id:"trip1",name:"Les Carroz",from:"2027-01-09",to:"2027-01-16",summary:"Ski. Observe what actually limits you.",rules:["Record skiing notes","Do not chase gym work","Capture fatigue, terrain and technical issues"]},
+{id:"assess",name:"Recover & assess",from:"2027-01-17",to:"2027-01-31",summary:"Use January to define the Flaine build.",rules:["Recover","Review Les Carroz","Update programme based on real skiing"]},
+{id:"flainebuild",name:"Flaine build",from:"2027-02-01",to:"2027-03-19",summary:"Build the qualities January exposed.",rules:["Specific emphasis updated after Les Carroz","Maintain weight strategy as appropriate","Weekly snow if useful"]},
+{id:"flaineTaper",name:"Flaine taper",from:"2027-03-20",to:"2027-03-26",summary:"Reduce fatigue and arrive ready for the second trip.",rules:["Reduce unnecessary fatigue","Keep technique sharp"]},
+{id:"trip2",name:"Flaine",from:"2027-03-27",to:"2027-04-03",summary:"Second ski block.",rules:["Enjoy it","Compare with January"]}
+];
+const state={tab:"today",weekOffset:0,activeWorkout:null};
+class DB{async init(){this.db=await new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=()=>{const d=r.result;["settings","goals","phases","exercises","templates","planned","workouts","daily","activities","weeklyReviews","exceptions"].forEach(n=>{if(!d.objectStoreNames.contains(n))d.createObjectStore(n,{keyPath:"id",autoIncrement:true})})};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})} store(n,m="readonly"){return this.db.transaction(n,m).objectStore(n)} all(n){return new Promise((res,rej)=>{const r=this.store(n).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})} get(n,id){return new Promise((res,rej)=>{const r=this.store(n).get(id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})} add(n,o){return new Promise((res,rej)=>{const r=this.store(n,"readwrite").add(o);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})} put(n,o){return new Promise((res,rej)=>{const r=this.store(n,"readwrite").put(o);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})} del(n,id){return new Promise((res,rej)=>{const r=this.store(n,"readwrite").delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})} clear(n){return new Promise((res,rej)=>{const r=this.store(n,"readwrite").clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}}
+const db=new DB(), $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+const isoDate=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const parseDate=s=>new Date(s+"T12:00:00"), fmt=s=>parseDate(s).toLocaleDateString("en-GB",{day:"numeric",month:"short"}), monday=(d=new Date())=>{let x=new Date(d);x.setHours(12,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x}, addDays=(d,n)=>{let x=new Date(d);x.setDate(x.getDate()+n);return x}, daysUntil=s=>Math.ceil((parseDate(s)-new Date())/86400000), avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null, num=v=>v===""||v==null?null:Number(v), uid=()=>crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now();
+async function getSettings(){return (await db.all("settings"))[0]||{}} async function saveSettings(p){const c=await getSettings();await db.put("settings",{...c,...p,id:c.id||1})}
+function item(exerciseId,sets,repMin,repMax,target,rest,optional=false,rehab=false,startWeight=0,eventualSets=3,note=""){return{exerciseId,sets,repMin,repMax,target,rest,warmups:[],optional,rehab,startWeight,eventualSets,note,progression:"double"}}
+async function seed(){if(!(await db.all("goals")).length)for(const g of GOALS_DEFAULT)await db.add("goals",g);if(!(await db.all("phases")).length)for(const p of PHASES_DEFAULT)await db.add("phases",p);if(!(await db.all("settings")).length)await db.add("settings",{heightCm:178,birthDate:"1995-12-11",sex:"male",calorieLow:2150,calorieHigh:2300,externalCalories:2229,proteinFloor:120,proteinPreferred:140,externalProtein:112,stepTarget:8500,weekMode:"days",aiModel:"gpt-5.6"});if(!(await db.all("exceptions")).length)await db.add("exceptions",{name:"Christmas flexibility",from:"2026-12-21",to:"2027-01-01",projectionMode:"maintenance",excludeTDEE:true});if(!(await db.all("exercises")).length)await seedExercisesTemplates()}
+async function seedExercisesTemplates(){const exs=[["Hack Squat","Lower body","Machine","kg",5,120],["Pull Up","Back","Bodyweight","bodyweight",1,120],["Chest Fly","Chest","Machine","kg",5,90],["Bulgarian Split Squat","Lower body","Free weight","kg",2.5,120],["Lateral Raise (Machine)","Shoulders","Machine","kg",2.5,90],["Loaded Inversions","Rehab","Cable/other","kg",2.5,90],["Standing Calf Raise (Machine)","Calves","Machine","kg",5,90],["Back Extension","Posterior chain","Bodyweight/plate","kg",5,90],["Bicep Curl (Dumbbell)","Arms","Dumbbell","kg",2.5,90],["Seated Leg Curl (Machine)","Hamstrings","Machine","kg",5,90],["Seated Row (Machine)","Back","Machine","kg",5,90],["Incline Chest Press (Machine)","Chest","Machine","kg",5,90],["Slow Step-down","Lower body","Bodyweight/plate","kg",2.5,90],["Seated Calf Raise (Plate Loaded)","Calves","Plate loaded","kg",5,90],["Triceps Pushdown (Cable - Straight Bar)","Arms","Cable","kg",3,60],["Knee Raise (Captain's Chair)","Core","Bodyweight","bodyweight",1,90],["Lateral Lunge","Lower body","Bodyweight/DB","kg",2.5,90]],ids={};for(const [name,category,equipment,loadType,increment,defaultRest]of exs)ids[name]=await db.add("exercises",{name,category,equipment,loadType,increment,defaultRest,notes:""});const A=[item(ids["Hack Squat"],2,6,10,6,120,false,false,42.5,3),item(ids["Pull Up"],2,4,8,6,120,false,false,0,3),item(ids["Chest Fly"],2,8,12,8,90,false,false,67.5,3),item(ids["Bulgarian Split Squat"],2,8,10,8,120,false,false,0,2,"Single-leg ski bias. Keep controlled."),item(ids["Lateral Raise (Machine)"],2,8,15,12,90,false,false,30,3),item(ids["Loaded Inversions"],3,10,15,12,90,false,true,27.5,3),item(ids["Standing Calf Raise (Machine)"],3,8,15,8,90,false,true,52.5,3),item(ids["Back Extension"],2,8,12,12,90,false,false,0,3),item(ids["Bicep Curl (Dumbbell)"],2,8,12,12,90,true,false,10,3)];const B=[item(ids["Seated Leg Curl (Machine)"],2,6,10,8,90,false,false,47.5,3),item(ids["Seated Row (Machine)"],2,8,12,8,90,false,false,42.5,3),item(ids["Incline Chest Press (Machine)"],2,8,12,8,90,false,false,75,3),item(ids["Slow Step-down"],2,8,10,8,90,false,false,0,2,"3–4 second lowering. Control, not annihilation."),item(ids["Lateral Raise (Machine)"],2,8,15,12,90,false,false,30,3),item(ids["Loaded Inversions"],3,10,15,12,90,false,true,27.5,3),item(ids["Seated Calf Raise (Plate Loaded)"],3,8,15,12,90,false,true,47.5,3),item(ids["Triceps Pushdown (Cable - Straight Bar)"],2,8,12,8,60,false,false,47.5,3),item(ids["Knee Raise (Captain's Chair)"],2,10,15,15,90,false,false,0,3)];await db.add("templates",{name:"Ski A",type:"strength",description:"Full body with squat + unilateral ski bias",items:A});await db.add("templates",{name:"Ski B",type:"strength",description:"Full body with hamstrings + eccentric ski bias",items:B});await db.add("templates",{name:"Easy cardio",type:"cardio",description:"40–60 min easy aerobic work",activity:{kind:"Easy / Zone 2",minutes:45}});await db.add("templates",{name:"Snozone technique",type:"snow",description:"Technique-first indoor ski session",activity:{minutes:60,focus:"Outside ski pressure"}})}
+function currentPhase(phases){const d=isoDate();return phases.find(p=>d>=p.from&&d<=p.to)||phases[0]}
+function renderNav(){const tabs=[["today","⌂","Today"],["week","▦","Week"],["train","＋","Train"],["progress","↗","Progress"],["more","•••","More"]];$("#nav").innerHTML=tabs.map(([id,ico,label])=>`<button class="navbtn ${state.tab===id?"on":""}" data-nav="${id}"><b>${ico}</b>${label}</button>`).join("");$$('[data-nav]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.nav;render()})}
+async function render(){renderNav();if(state.tab==="today")await renderToday();if(state.tab==="week")await renderWeek();if(state.tab==="train")await renderTrain();if(state.tab==="progress")await renderProgress();if(state.tab==="more")await renderMore()}
+async function dailyByDate(date){return(await db.all("daily")).find(x=>x.date===date)||null}
+function fieldInline(label,id,val,mode){return`<div class="field"><label>${label}</label><input id="${id}" inputmode="${mode}" value="${esc(val)}"></div>`} function miniStat(name,n,t){return`<div class="kpi-line"><span>${name}</span><span class="chip ${n>=t?"good":""}">${n}/${t}</span></div>`}
+async function renderToday(){const[goals,phases,planned]=await Promise.all([db.all("goals"),db.all("phases"),db.all("planned")]),date=isoDate(),dlog=await dailyByDate(date),phase=currentPhase(phases),todayPlans=planned.filter(p=>p.date===date),sorted=goals.sort((a,b)=>a.date.localeCompare(b.date)),week=await weekStats(monday());$("#app").innerHTML=`<div class="top"><div><div class="eyebrow">Gareth Training</div><h1>Today</h1><div class="muted">${new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}</div></div><span class="chip">${esc(phase.name)}</span></div><section class="card hero"><div class="grid2"><div class="metric"><span>${esc(sorted[0].name)}</span><strong>${Math.max(0,daysUntil(sorted[0].date))}</strong><div class="small muted">days · ${fmt(sorted[0].date)}</div></div><div class="metric"><span>${esc(sorted[1].name)}</span><strong>${Math.max(0,daysUntil(sorted[1].date))}</strong><div class="small muted">days · ${fmt(sorted[1].date)}</div></div></div><div class="rule"></div><div class="small"><strong>${esc(phase.name)}:</strong> ${esc(phase.summary)}</div></section><div class="section"><h2>Today</h2><button class="btn small secondary" id="addPlanToday">+ plan</button></div>${todayPlans.length?todayPlans.map(planCard).join(""):`<section class="card"><div class="muted">Nothing assigned today. You can still start any template from Train.</div></section>`}<div class="section"><h2>Daily check-in</h2><span class="tiny muted">ParrotPal summary</span></div><section class="card"><div class="grid2">${fieldInline("Weight kg","dWeight",dlog?.weight??"","decimal")}${fieldInline("Calories","dCalories",dlog?.calories??"","numeric")}${fieldInline("Protein g","dProtein",dlog?.protein??"","numeric")}${fieldInline("Steps","dSteps",dlog?.steps??"","numeric")}</div><div class="field"><label>Optional note</label><textarea id="dNote" placeholder="Hunger, eating out, ankle, sleep, whatever matters...">${esc(dlog?.note||"")}</textarea></div><button class="btn block" id="saveDaily">${dlog?"Update":"Save"} check-in</button></section><section class="card"><div class="row"><div><h2>This week</h2><div class="small muted">${week.label}</div></div><strong>${week.completed}/${week.planned||5}</strong></div>${miniStat("Strength",week.strength,2)}${miniStat("Snow",week.snow,1)}${miniStat("Cardio",week.cardio,2)}<div class="progress"><div style="width:${Math.min(100,(week.completed/(week.planned||5))*100)}%"></div></div></section>`;$("#saveDaily").onclick=saveTodayLog;$("#addPlanToday").onclick=()=>openPlanModal(date);$$('[data-plan]').forEach(bindPlanButton)}
+function planCard(p){return`<section class="card"><div class="row"><div><div class="tiny muted">${esc(p.kind||"session")}</div><h3>${esc(p.title)}</h3>${p.note?`<div class="small muted">${esc(p.note)}</div>`:""}</div><span class="chip ${p.status==="done"?"good":p.status==="skipped"?"warn":""}">${p.status||"planned"}</span></div><div class="wrap" style="margin-top:10px">${p.status!=="done"&&p.status!=="skipped"?`<button class="btn small" data-plan="${p.id}" data-act="start">Start</button><button class="btn small secondary" data-plan="${p.id}" data-act="done">Tick off</button>`:""}<button class="btn small ghost" data-plan="${p.id}" data-act="move">Move</button><button class="btn small ghost" data-plan="${p.id}" data-act="edit">Edit</button>${p.status!=="skipped"?`<button class="btn small warn" data-plan="${p.id}" data-act="skip">Skip</button>`:""}<button class="btn small danger" data-plan="${p.id}" data-act="delete">Delete</button></div></section>`}
+async function saveTodayLog(){const date=isoDate(),e=await dailyByDate(date),o={id:e?.id,date,weight:num($("#dWeight").value),calories:num($("#dCalories").value),protein:num($("#dProtein").value),steps:num($("#dSteps").value),note:$("#dNote").value.trim()};if(e)await db.put("daily",o);else{delete o.id;await db.add("daily",o)}render()}
+async function renderWeek(){const settings=await getSettings(),ws=addDays(monday(),state.weekOffset*7),days=[0,1,2,3,4,5,6].map(i=>addDays(ws,i)),planned=await db.all("planned"),wk=planned.filter(p=>p.date>=isoDate(days[0])&&p.date<=isoDate(days[6])).sort((a,b)=>a.date.localeCompare(b.date)),review=await getWeekReview(isoDate(ws));$("#app").innerHTML=`<div class="top"><div><div class="eyebrow">Plan reality, not perfection</div><h1>Week</h1><div class="muted">${fmt(isoDate(days[0]))} – ${fmt(isoDate(days[6]))}</div></div></div><div class="row card"><button class="btn small ghost" id="prevWeek">←</button><div class="wrap"><button class="btn small ${settings.weekMode==="days"?"":"secondary"}" id="modeDays">By day</button><button class="btn small ${settings.weekMode==="list"?"":"secondary"}" id="modeList">Weekly list</button></div><button class="btn small ghost" id="nextWeek">→</button></div>${settings.weekMode==="days"?weekDaysHTML(days,wk):weekListHTML(wk)}<button class="btn block secondary" id="addWeek">+ Add session</button><div class="section"><h2>Weekly review</h2>${review?`<span class="chip good">reviewed</span>`:""}</div><section class="card">${review?`<div class="small muted">Last saved ${fmt(review.createdDate)}</div>${review.aiSummary?`<div class="banner good" style="margin-top:10px">${esc(review.aiSummary)}</div>`:""}`:`<p class="muted">Close the week with the numbers plus the real-life context the numbers miss.</p>`}<button class="btn block" id="reviewWeek">${review?"Open / update review":"Review this week"}</button></section>`;$("#prevWeek").onclick=()=>{state.weekOffset--;render()};$("#nextWeek").onclick=()=>{state.weekOffset++;render()};$("#modeDays").onclick=async()=>{await saveSettings({weekMode:"days"});render()};$("#modeList").onclick=async()=>{await saveSettings({weekMode:"list"});render()};$("#addWeek").onclick=()=>openPlanModal(isoDate(days[0]));$("#reviewWeek").onclick=()=>openWeeklyReview(isoDate(ws));$$('[data-plan]').forEach(bindPlanButton);$$('[data-add-day]').forEach(b=>b.onclick=()=>openPlanModal(b.dataset.addDay))}
+function weekDaysHTML(days,plans){return days.map(d=>{const date=isoDate(d),ps=plans.filter(p=>p.date===date);return`<div class="week-day"><div class="week-head"><div><strong>${d.toLocaleDateString("en-GB",{weekday:"short"})}</strong> <span class="small muted">${d.getDate()}</span></div><button class="btn small ghost" data-add-day="${date}">+</button></div>${ps.length?ps.map(p=>weekPlan(p)).join(""):`<div class="tiny muted" style="padding:5px 2px">No planned session</div>`}</div>`}).join("")}
+function weekListHTML(plans){return`<section class="card">${plans.length?plans.map(p=>weekPlan(p,true)).join(""):`<div class="muted">No sessions planned for this week.</div>`}</section>`}
+function weekPlan(p,showDate=false){return`<div class="plan-event ${p.status==="done"?"done":p.status==="skipped"?"skip":""}"><div class="row"><div>${showDate?`<div class="tiny muted">${fmt(p.date)}</div>`:""}<strong>${esc(p.title)}</strong></div><span class="chip">${p.status||"planned"}</span></div><div class="wrap" style="margin-top:8px"><button class="btn small ghost" data-plan="${p.id}" data-act="move">Move</button><button class="btn small ghost" data-plan="${p.id}" data-act="edit">Edit</button>${p.status!=="done"?`<button class="btn small secondary" data-plan="${p.id}" data-act="done">✓</button>`:""}</div></div>`}
+function bindPlanButton(b){b.onclick=async()=>{const p=await db.get("planned",Number(b.dataset.plan)),act=b.dataset.act;if(act==="delete"&&confirm("Delete this planned session?")){await db.del("planned",p.id);render()}if(act==="done"){p.status="done";await db.put("planned",p);render()}if(act==="skip"){p.status="skipped";p.skipReason=prompt("Why skip? Recovery / pain / illness / life / couldn't be arsed / other")||"";await db.put("planned",p);render()}if(act==="move"){const nd=prompt("Move to date (YYYY-MM-DD)",p.date);if(nd){p.date=nd;await db.put("planned",p);render()}}if(act==="edit")openPlanModal(p.date,p);if(act==="start")await startPlanned(p)}}
+async function startPlanned(p){if(p.templateId){const t=await db.get("templates",p.templateId);if(t?.type==="strength")return startWorkout(t,p);if(t?.type==="snow"||t?.type==="cardio")return openActivityModal(t.type,p,t)}p.status="done";await db.put("planned",p);render()}
+async function openPlanModal(defaultDate,existing=null){const templates=await db.all("templates");modal(`<div class="row"><div><div class="eyebrow">${existing?"Edit":"Plan"} session</div><h2>${existing?"Edit planned session":"Add to week"}</h2></div><button class="btn ghost small" data-close>Close</button></div><div class="field"><label>Date</label><input id="pDate" type="date" value="${existing?.date||defaultDate}"></div><div class="field"><label>Template (optional)</label><select id="pTemplate"><option value="">Custom / simple item</option>${templates.map(t=>`<option value="${t.id}" ${existing?.templateId===t.id?"selected":""}>${esc(t.name)}</option>`).join("")}</select></div><div class="field"><label>Title</label><input id="pTitle" value="${esc(existing?.title||"")}"></div><div class="field"><label>Note</label><textarea id="pNote">${esc(existing?.note||"")}</textarea></div><button class="btn block" id="savePlan">Save</button>`);$("#pTemplate").onchange=()=>{const t=templates.find(x=>x.id===Number($("#pTemplate").value));if(t&&!$("#pTitle").value)$("#pTitle").value=t.name};$("#savePlan").onclick=async()=>{const tid=Number($("#pTemplate").value)||null,t=templates.find(x=>x.id===tid),o={id:existing?.id,date:$("#pDate").value,templateId:tid,title:$("#pTitle").value||t?.name||"Session",kind:t?.type||"other",note:$("#pNote").value,status:existing?.status||"planned"};if(existing)await db.put("planned",o);else{delete o.id;await db.add("planned",o)}closeModal();render()}}
+async function renderTrain(){const templates=await db.all("templates");$("#app").innerHTML=`<div class="top"><div><div class="eyebrow">Anything can change</div><h1>Train</h1><div class="muted">Templates are starting points, not prisons.</div></div><button class="btn small" id="newTemplate">+ Template</button></div><div class="section"><h2>Templates</h2></div>${templates.map(templateCard).join("")}<div class="section"><h2>Exercise library</h2><button class="btn small secondary" id="newExercise">+ Exercise</button></div><section class="card"><button class="btn block secondary" id="manageExercises">Manage exercises</button></section>`;$("#newTemplate").onclick=()=>editTemplate();$("#newExercise").onclick=()=>editExercise();$("#manageExercises").onclick=manageExercises;$$('[data-template]').forEach(b=>b.onclick=async()=>{const t=await db.get("templates",Number(b.dataset.template)),act=b.dataset.act;if(act==="start"){if(t.type==="strength")startWorkout(t);else openActivityModal(t.type,null,t)}if(act==="edit")editTemplate(t);if(act==="duplicate"){const c=structuredClone(t);delete c.id;c.name=t.name+" copy";await db.add("templates",c);render()}if(act==="delete"&&confirm(`Delete template "${t.name}"? Historical workouts remain.`)){await db.del("templates",t.id);render()}})}
+function templateCard(t){return`<section class="card"><div class="row"><div><div class="tiny muted">${esc(t.type)}</div><h2 style="margin:3px 0">${esc(t.name)}</h2><div class="small muted">${esc(t.type==="strength"?`${t.items?.length||0} exercises`:t.description||t.type)}</div></div><button class="btn small" data-template="${t.id}" data-act="start">Start</button></div><div class="wrap" style="margin-top:11px"><button class="btn small secondary" data-template="${t.id}" data-act="edit">Edit</button><button class="btn small ghost" data-template="${t.id}" data-act="duplicate">Duplicate</button><button class="btn small danger" data-template="${t.id}" data-act="delete">Delete</button></div></section>`}
+async function editTemplate(t=null){const exercises=await db.all("exercises"),draft=t?structuredClone(t):{name:"New template",type:"strength",description:"",items:[]};function capture(){draft.name=$("#teName")?.value||draft.name;draft.type=$("#teType")?.value||draft.type;draft.description=$("#teDesc")?.value||"";if(draft.type==="strength")$$('.teitem').forEach((el,i)=>{const x=draft.items[i];x.sets=Number(el.querySelector('[data-f=sets]').value);x.repMin=Number(el.querySelector('[data-f=min]').value);x.repMax=Number(el.querySelector('[data-f=max]').value);x.target=Number(el.querySelector('[data-f=target]').value);x.rest=Number(el.querySelector('[data-f=rest]').value);x.startWeight=Number(el.querySelector('[data-f=weight]').value)||0;x.eventualSets=Number(el.querySelector('[data-f=eventual]').value)||x.sets;x.optional=el.querySelector('[data-f=optional]').checked;x.rehab=el.querySelector('[data-f=rehab]').checked;x.note=el.querySelector('[data-f=note]').value;x.warmups=el.querySelector('[data-f=warmups]').value.split(',').map(s=>s.trim()).filter(Boolean).map(label=>({label}))});else draft.activity={kind:$("#actKind")?.value||draft.activity?.kind||"",minutes:Number($("#actMins")?.value)||45,focus:$("#actFocus")?.value||""}}function draw(){modal(`<div class="row"><div><div class="eyebrow">Template</div><h2>Edit template</h2></div><button class="btn ghost small" data-close>Close</button></div><div class="field"><label>Name</label><input id="teName" value="${esc(draft.name)}"></div><div class="field"><label>Type</label><select id="teType"><option value="strength" ${draft.type==="strength"?"selected":""}>Strength</option><option value="cardio" ${draft.type==="cardio"?"selected":""}>Cardio</option><option value="snow" ${draft.type==="snow"?"selected":""}>Snow</option><option value="other" ${draft.type==="other"?"selected":""}>Other</option></select></div><div class="field"><label>Description</label><input id="teDesc" value="${esc(draft.description||"")}"></div>${draft.type==="strength"?templateItemsHTML(draft.items,exercises):activityTemplateHTML(draft)}<div class="wrap"><button class="btn" id="saveTemplate">Save template</button>${draft.id?'<button class="btn secondary" id="copyTemplate">Save as copy</button>':""}</div>`);$("#teType").onchange=()=>{capture();draft.type=$("#teType").value;draw()};$$('[data-tremove]').forEach(b=>b.onclick=()=>{capture();draft.items.splice(Number(b.dataset.tremove),1);draw()});$$('[data-tup]').forEach(b=>b.onclick=()=>{capture();let i=Number(b.dataset.tup);if(i>0)[draft.items[i-1],draft.items[i]]=[draft.items[i],draft.items[i-1]];draw()});$("#addTemplateExercise")?.addEventListener('click',()=>{capture();const id=Number($("#addExSelect").value);if(id){draft.items.push(item(id,2,8,12,8,90));draw()}});$("#saveTemplate").onclick=async()=>{capture();if(draft.id)await db.put("templates",draft);else draft.id=await db.add("templates",draft);closeModal();render()};$("#copyTemplate")?.addEventListener('click',async()=>{capture();const c=structuredClone(draft);delete c.id;c.name+=" copy";await db.add("templates",c);closeModal();render()})}draw()}
+function templateItemsHTML(items,exercises){return`<div class="section"><h2>Exercises</h2></div>${items.map((x,i)=>{const e=exercises.find(z=>z.id===x.exerciseId);return`<div class="card teitem"><div class="row"><strong>${esc(e?.name||"Unknown")}</strong><div class="wrap"><button class="btn small ghost" data-tup="${i}">↑</button><button class="btn small danger" data-tremove="${i}">×</button></div></div><div class="grid3" style="margin-top:10px">${smallInput("Sets","sets",x.sets)}${smallInput("Reps min","min",x.repMin)}${smallInput("Reps max","max",x.repMax)}${smallInput("Target","target",x.target)}${smallInput("Rest sec","rest",x.rest)}${smallInput("Start kg","weight",x.startWeight)}${smallInput("Eventual sets","eventual",x.eventualSets)}</div><div class="field"><label>Warm-ups (comma separated)</label><input data-f="warmups" value="${esc((x.warmups||[]).map(w=>w.label).join(', '))}"></div><div class="field"><label>Exercise note</label><input data-f="note" value="${esc(x.note||"")}"></div><div class="wrap"><label><input style="width:auto" type="checkbox" data-f="optional" ${x.optional?"checked":""}> optional</label><label><input style="width:auto" type="checkbox" data-f="rehab" ${x.rehab?"checked":""}> rehab</label></div></div>`}).join("")}<div class="card"><div class="row"><select id="addExSelect"><option value="">Choose exercise…</option>${exercises.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select><button class="btn small" id="addTemplateExercise">Add</button></div></div>`}
+function smallInput(label,f,val){return`<div class="field"><label>${label}</label><input data-f="${f}" type="number" value="${val}"></div>`} function activityTemplateHTML(d){return`<div class="field"><label>Activity label</label><input id="actKind" value="${esc(d.activity?.kind||d.type)}"></div><div class="field"><label>Default minutes</label><input id="actMins" type="number" value="${d.activity?.minutes||45}"></div><div class="field"><label>Default focus / notes</label><input id="actFocus" value="${esc(d.activity?.focus||"")}"></div>`}
+async function manageExercises(){const exs=await db.all("exercises");modal(`<div class="row"><div><div class="eyebrow">Library</div><h2>Exercises</h2></div><button class="btn ghost small" data-close>Close</button></div>${exs.sort((a,b)=>a.name.localeCompare(b.name)).map(e=>`<div class="item"><div class="row"><div><strong>${esc(e.name)}</strong><div class="tiny muted">${esc(e.category)} · ${esc(e.equipment)}</div></div><div class="wrap"><button class="btn small secondary" data-exedit="${e.id}">Edit</button><button class="btn small danger" data-exdel="${e.id}">×</button></div></div></div>`).join("")}<button class="btn block" id="exNew">+ New exercise</button>`);$("#exNew").onclick=()=>editExercise();$$('[data-exedit]').forEach(b=>b.onclick=async()=>editExercise(await db.get("exercises",Number(b.dataset.exedit))));$$('[data-exdel]').forEach(b=>b.onclick=async()=>{if(confirm("Delete this exercise from the library?")){await db.del("exercises",Number(b.dataset.exdel));manageExercises()}})}
+async function editExercise(e=null){modal(`<div class="row"><div><div class="eyebrow">Exercise</div><h2>${e?"Edit":"New"} exercise</h2></div><button class="btn ghost small" data-close>Close</button></div>${formField("Name","exName",e?.name||"")}${formField("Category","exCat",e?.category||"")}${formField("Equipment","exEquip",e?.equipment||"")}<div class="field"><label>Load type</label><select id="exLoad"><option value="kg">kg</option><option value="bodyweight" ${e?.loadType==="bodyweight"?"selected":""}>bodyweight</option><option value="assisted">assisted</option><option value="duration">duration</option></select></div>${formField("Normal increment","exInc",e?.increment??2.5,"number")}${formField("Default rest seconds","exRest",e?.defaultRest??90,"number")}<div class="field"><label>Notes</label><textarea id="exNotes">${esc(e?.notes||"")}</textarea></div><button class="btn block" id="saveEx">Save</button>`);$("#saveEx").onclick=async()=>{const o={id:e?.id,name:$("#exName").value,category:$("#exCat").value,equipment:$("#exEquip").value,loadType:$("#exLoad").value,increment:Number($("#exInc").value)||0,defaultRest:Number($("#exRest").value)||90,notes:$("#exNotes").value};if(e)await db.put("exercises",o);else{delete o.id;await db.add("exercises",o)}closeModal();state.tab="train";render()}}
+function formField(label,id,val,type="text"){return`<div class="field"><label>${label}</label><input id="${id}" type="${type}" value="${esc(val)}"></div>`}
+async function startWorkout(template,planned=null){const exercises=await db.all("exercises"),phase=currentPhase(await db.all("phases")),items=(template.items||[]).map(x=>{const ex=exercises.find(e=>e.id===x.exerciseId);let n=phase.id==="reentry"?x.sets:(x.rehab?x.sets:x.eventualSets||x.sets);if(phase.id==="taper")n=Math.min(n,2);const sets=[...(x.warmups||[]).map(w=>({id:uid(),type:"warmup",weight:null,reps:null,rir:null,label:w.label||""}))];for(let i=0;i<n;i++)sets.push({id:uid(),type:"work",weight:x.startWeight||0,reps:null,rir:null,label:""});return{id:uid(),exerciseId:x.exerciseId,name:ex?.name||"Unknown",rest:x.rest||ex?.defaultRest||90,note:x.note||"",optional:x.optional,sets,templateConfig:structuredClone(x)}});state.activeWorkout={templateId:template.id,templateName:template.name,plannedId:planned?.id||null,date:isoDate(),startAt:new Date().toISOString(),status:"active",items,note:""};renderWorkout()}
+function workoutExerciseHTML(it,i){return`<div class="exercise-block"><div class="exercise-head"><div><h3>${esc(it.name)} ${it.optional?'<span class="chip">optional</span>':""}</h3><div class="timer">Rest ${it.rest}s</div>${it.note?`<div class="small muted">${esc(it.note)}</div>`:""}</div><div class="wrap"><button class="btn small ghost" data-wact="editEx" data-i="${i}">Edit</button><button class="btn small danger" data-wact="delEx" data-i="${i}">×</button></div></div><div class="set-header"><span>#</span><span>Type</span><span>kg</span><span>reps</span><span>RIR</span><span></span></div>${it.sets.map((s,j)=>`<div class="setrow"><span class="tiny">${j+1}</span><select data-wi="${i}" data-si="${j}" data-f="type"><option value="work" ${s.type==="work"?"selected":""}>work</option><option value="warmup" ${s.type==="warmup"?"selected":""}>warm</option></select><input data-wi="${i}" data-si="${j}" data-f="weight" inputmode="decimal" value="${s.weight??""}" placeholder="${s.label||"kg"}"><input data-wi="${i}" data-si="${j}" data-f="reps" inputmode="numeric" value="${s.reps??""}"><input data-wi="${i}" data-si="${j}" data-f="rir" inputmode="numeric" value="${s.rir??""}"><button class="btn small ghost" data-wact="delSet" data-i="${i}" data-j="${j}">×</button></div>`).join("")}<div class="wrap" style="margin-top:8px"><button class="btn small secondary" data-wact="addSet" data-i="${i}">+ set</button><button class="btn small ghost" data-wact="addWarm" data-i="${i}">+ warm-up</button></div></div>`}
+function renderWorkout(){const w=state.activeWorkout;$("#app").innerHTML=`<div class="top"><div><div class="eyebrow">Active workout</div><h1>${esc(w.templateName)}</h1></div><button class="btn small ghost" id="cancelWorkout">Close</button></div><div class="banner">Everything here is editable. Today's changes do not alter the template unless you choose that at the end.</div><section class="card">${w.items.map(workoutExerciseHTML).join("")}</section><button class="btn block secondary" id="addWorkoutExercise">+ Add exercise</button><div class="field" style="margin-top:12px"><label>Workout note</label><textarea id="workoutNote">${esc(w.note||"")}</textarea></div><button class="btn block" id="finishWorkout">Finish workout</button>`;$("#cancelWorkout").onclick=()=>{if(confirm("Close active workout? Current unsaved edits will be lost.")){state.activeWorkout=null;state.tab="train";render()}};$("#addWorkoutExercise").onclick=addExerciseToWorkout;$("#finishWorkout").onclick=finishWorkout;bindWorkoutInputs()}
+function bindWorkoutInputs(){$$('[data-wi]').forEach(inp=>inp.oninput=()=>{const i=Number(inp.dataset.wi),j=Number(inp.dataset.si),f=inp.dataset.f,v=inp.value;state.activeWorkout.items[i].sets[j][f]=f==="type"?v:(v===""?null:Number(v))});$$('[data-wact]').forEach(b=>b.onclick=async()=>{const i=Number(b.dataset.i),act=b.dataset.wact;if(act==="delEx"){state.activeWorkout.items.splice(i,1);renderWorkout()}if(act==="addSet"){state.activeWorkout.items[i].sets.push({id:uid(),type:"work",weight:null,reps:null,rir:null,label:""});renderWorkout()}if(act==="addWarm"){state.activeWorkout.items[i].sets.unshift({id:uid(),type:"warmup",weight:null,reps:null,rir:null,label:""});renderWorkout()}if(act==="delSet"){state.activeWorkout.items[i].sets.splice(Number(b.dataset.j),1);renderWorkout()}if(act==="editEx")editWorkoutExercise(i)})}
+async function editWorkoutExercise(i){const it=state.activeWorkout.items[i];modal(`<div class="row"><div><div class="eyebrow">Today's exercise</div><h2>${esc(it.name)}</h2></div><button class="btn small ghost" data-close>Close</button></div>${formField("Rest seconds","weRest",it.rest,"number")}<div class="field"><label>Note</label><textarea id="weNote">${esc(it.note||"")}</textarea></div><button class="btn block" id="saveWE">Save changes</button>`);$("#saveWE").onclick=()=>{it.rest=Number($("#weRest").value)||90;it.note=$("#weNote").value;closeModal();renderWorkout()}}
+async function addExerciseToWorkout(){const exs=await db.all("exercises");modal(`<div class="row"><h2>Add exercise</h2><button class="btn ghost small" data-close>Close</button></div><div class="field"><select id="waEx">${exs.sort((a,b)=>a.name.localeCompare(b.name)).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select></div><button class="btn block" id="waAdd">Add</button>`);$("#waAdd").onclick=()=>{const e=exs.find(x=>x.id===Number($("#waEx").value));state.activeWorkout.items.push({id:uid(),exerciseId:e.id,name:e.name,rest:e.defaultRest||90,note:"",optional:false,sets:[{id:uid(),type:"work",weight:null,reps:null,rir:null,label:""}]});closeModal();renderWorkout()}}
+async function finishWorkout(){state.activeWorkout.note=$("#workoutNote").value;state.activeWorkout.endAt=new Date().toISOString();state.activeWorkout.status="complete";const id=await db.add("workouts",structuredClone(state.activeWorkout));if(state.activeWorkout.plannedId){const p=await db.get("planned",state.activeWorkout.plannedId);if(p){p.status="done";p.workoutId=id;await db.put("planned",p)}}const t=await db.get("templates",state.activeWorkout.templateId),completed=structuredClone(state.activeWorkout),changed=JSON.stringify((t?.items||[]).map(x=>({exerciseId:x.exerciseId,sets:x.sets,rest:x.rest})))!==JSON.stringify(completed.items.map(x=>({exerciseId:x.exerciseId,sets:x.sets.filter(s=>s.type==="work").length,rest:x.rest})));state.activeWorkout=null;modal(`<div class="row"><div><div class="eyebrow">Saved</div><h2>${esc(completed.templateName)} complete</h2></div><button class="btn ghost small" data-close>Close</button></div><section class="card"><div class="kpi-line"><span>Exercises</span><strong>${completed.items.length}</strong></div><div class="kpi-line"><span>Working sets logged</span><strong>${completed.items.flatMap(x=>x.sets).filter(s=>s.type==="work"&&s.reps).length}</strong></div></section>${changed?`<div class="banner warn">Today's structure differed from the template. Historical data is already saved separately.</div><div class="wrap"><button class="btn" id="updateT">Update template</button><button class="btn secondary" id="newT">Save as new template</button></div>`:`<div class="banner good">Template structure unchanged.</div>`}`);$("#updateT")?.addEventListener('click',async()=>{await updateTemplateFromWorkout(t,completed,false);closeModal();state.tab="today";render()});$("#newT")?.addEventListener('click',async()=>{await updateTemplateFromWorkout(t,completed,true);closeModal();state.tab="today";render()})}
+async function updateTemplateFromWorkout(t,w,copy){const items=w.items.map(x=>{const old=t?.items?.find(y=>y.exerciseId===x.exerciseId)||{};return{...old,exerciseId:x.exerciseId,sets:x.sets.filter(s=>s.type==="work").length,warmups:x.sets.filter(s=>s.type==="warmup").map(s=>({label:s.label||""})),rest:x.rest,note:x.note||old.note||"",repMin:old.repMin||8,repMax:old.repMax||12,target:old.target||8,eventualSets:old.eventualSets||x.sets.filter(s=>s.type==="work").length}});if(copy){await db.add("templates",{name:prompt("New template name",w.templateName+" variation")||w.templateName+" variation",type:"strength",description:"Created from workout",items})}else{t.items=items;await db.put("templates",t)}}
+function openActivityModal(kind,planned=null,template=null){const snow=kind==="snow";modal(`<div class="row"><div><div class="eyebrow">${snow?"Snow":"Cardio"}</div><h2>${esc(template?.name||(snow?"Snozone":"Activity"))}</h2></div><button class="btn ghost small" data-close>Close</button></div>${formField("Minutes","aMin",template?.activity?.minutes||60,"number")}${!snow?formField("Activity type","aKind",template?.activity?.kind||"Easy / Zone 2"):""}${!snow?formField("Distance (optional)","aDist","","number"):""}${formField("Effort /10","aEff",snow?6:4,"number")}${snow?formField("Leg fatigue /10","aLeg",5,"number"):""}${snow?formField("Technical focus","aFocus",template?.activity?.focus||""):""}<div class="field"><label>${snow?"What did you actually work on?":"Notes"}</label><textarea id="aNote"></textarea></div>${snow?'<div class="field"><label>What felt better?</label><textarea id="aGood"></textarea></div><div class="field"><label>What did not work / instructor feedback?</label><textarea id="aBad"></textarea></div>':""}<button class="btn block" id="saveActivity">Save</button>`);$("#saveActivity").onclick=async()=>{await db.add("activities",{date:isoDate(),kind:snow?"snow":"cardio",minutes:Number($("#aMin").value)||0,activity:snow?"Snozone":$("#aKind")?.value,distance:num($("#aDist")?.value),effort:num($("#aEff").value),legFatigue:num($("#aLeg")?.value),focus:$("#aFocus")?.value||"",note:$("#aNote").value,good:$("#aGood")?.value||"",bad:$("#aBad")?.value||""});if(planned){planned.status="done";await db.put("planned",planned)}closeModal();state.tab="today";render()}}
+function weightTrend(weights){if(!weights.length)return{};const now=new Date(),recent=n=>weights.filter(w=>(now-parseDate(w.date))/86400000<n),avg7=avg(recent(7).map(x=>x.weight)),r=recent(28);let weeklyRate=null;if(r.length>=4){const n=Math.max(1,Math.floor(r.length/3)),first=r.slice(0,n),last=r.slice(-n),days=Math.max(7,(parseDate(last.at(-1).date)-parseDate(first[0].date))/86400000);weeklyRate=(avg(last.map(x=>x.weight))-avg(first.map(x=>x.weight)))/(days/7)}return{avg7,weeklyRate,current:weights.at(-1).weight}}
+function estimateTDEE(daily){const c=daily.filter(d=>d.calories&&d.weight).sort((a,b)=>a.date.localeCompare(b.date));if(c.length<14)return null;const r=c.slice(-35),cal=avg(r.map(x=>x.calories)),n=Math.max(3,Math.floor(r.length/4)),first=avg(r.slice(0,n).map(x=>x.weight)),last=avg(r.slice(-n).map(x=>x.weight)),days=(parseDate(r.at(-1).date)-parseDate(r[0].date))/86400000||1;return cal-((last-first)/days)*7700}
+function weightSVG(weights){if(weights.length<2)return'<div class="muted" style="padding:35px 0;text-align:center">Log at least two weights to see the trend.</div>';const pts=weights.slice(-60),vals=pts.map(x=>x.weight),min=Math.min(...vals)-.5,max=Math.max(...vals)+.5,w=600,h=120,p=10,xy=pts.map((x,i)=>`${p+i*(w-2*p)/(pts.length-1)},${h-p-(x.weight-min)*(h-2*p)/(max-min)}`).join(' ');return`<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${xy}" fill="none" stroke="#7aa7ff" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/></svg>`}
+function projectionHTML(goal,trend){if(!trend.current)return`<div class="kpi-line"><span>${esc(goal.name)}</span><span class="muted">log weight first</span></div>`;const days=Math.max(0,daysUntil(goal.date)),rate=trend.weeklyRate??-.45,cs=parseDate("2026-12-21"),ce=parseDate("2027-01-01"),now=new Date(),end=parseDate(goal.date);let maintenanceDays=0;if(end>cs&&now<ce){const a=now>cs?now:cs,b=end<ce?end:ce;maintenanceDays=Math.max(0,(b-a)/86400000)}const ew=Math.max(0,(days-maintenanceDays)/7),projected=trend.current+rate*ew,unc=Math.max(1,Math.abs(rate)*ew*.25);return`<div class="review-box"><div class="row"><strong>${esc(goal.name)} · ${fmt(goal.date)}</strong><strong>${projected.toFixed(1)} kg</strong></div><div class="small muted">Likely range ~${(projected-unc).toFixed(1)}–${(projected+unc).toFixed(1)} kg · ${Math.round(maintenanceDays)} maintenance days included</div></div>`}
+async function renderProgress(){const[daily,workouts,activities,goals,reviews]=await Promise.all([db.all("daily"),db.all("workouts"),db.all("activities"),db.all("goals"),db.all("weeklyReviews")]),weights=daily.filter(d=>d.weight).sort((a,b)=>a.date.localeCompare(b.date)),trend=weightTrend(weights),tdee=estimateTDEE(daily);$("#app").innerHTML=`<div class="top"><div><div class="eyebrow">Evidence, not vibes</div><h1>Progress</h1></div></div><div class="grid3"><section class="card metric"><span>7d avg</span><strong>${trend.avg7?trend.avg7.toFixed(1):"—"}</strong></section><section class="card metric"><span>4wk rate</span><strong>${trend.weeklyRate!=null?trend.weeklyRate.toFixed(2):"—"}</strong><div class="tiny muted">kg/week</div></section><section class="card metric"><span>Est. TDEE</span><strong>${tdee?Math.round(tdee):"—"}</strong><div class="tiny muted">kcal/day</div></section></div><section class="card"><h2>Weight</h2>${weightSVG(weights)}</section><section class="card"><h2>Trip projections</h2>${goals.sort((a,b)=>a.date.localeCompare(b.date)).map(g=>projectionHTML(g,trend)).join('')}<div class="tiny muted">Uses recent weight trend when available and assumes Christmas flexibility is maintenance.</div></section><section class="card"><h2>Training history</h2><div class="kpi-line"><span>Strength workouts</span><strong>${workouts.length}</strong></div><div class="kpi-line"><span>Snow sessions</span><strong>${activities.filter(a=>a.kind==="snow").length}</strong></div><div class="kpi-line"><span>Cardio sessions</span><strong>${activities.filter(a=>a.kind==="cardio").length}</strong></div></section><section class="card"><h2>Weekly reviews</h2>${reviews.sort((a,b)=>b.weekStart.localeCompare(a.weekStart)).slice(0,6).map(r=>`<div class="item"><div class="row"><strong>w/c ${fmt(r.weekStart)}</strong><span class="chip ${r.aiStatus==="on_track"?"good":r.aiStatus==="adjust"?"warn":""}">${r.aiStatus||"review"}</span></div>${r.aiSummary?`<div class="small muted" style="margin-top:5px">${esc(r.aiSummary)}</div>`:""}</div>`).join('')||'<div class="muted">No weekly reviews yet.</div>'}</section>`}
+async function renderMore(){const[settings,goals,phases,exceptions]=await Promise.all([getSettings(),db.all("goals"),db.all("phases"),db.all("exceptions")]),phase=currentPhase(phases);$("#app").innerHTML=`<div class="top"><div><div class="eyebrow">Programme & settings</div><h1>More</h1></div></div><section class="card" id="planBird"><div class="row"><div><h2>Bird's-eye plan</h2><div class="small muted">Current: ${esc(phase.name)} · see every phase now</div></div><span>›</span></div></section><section class="card" id="targets"><div class="row"><div><h2>Targets</h2><div class="small muted">${settings.calorieLow}–${settings.calorieHigh} kcal · protein floor ${settings.proteinFloor}g · ${settings.stepTarget} steps</div></div><span>›</span></div></section><section class="card" id="goalsBtn"><div class="row"><div><h2>Trips & exceptions</h2><div class="small muted">${goals.map(g=>`${g.name} ${fmt(g.date)}`).join(' · ')}</div></div><span>›</span></div></section><section class="card" id="aiBtn"><div class="row"><div><h2>AI coach</h2><div class="small muted">${localStorage.getItem("openaiKey")?"Connected locally":"Not connected"} · ${esc(settings.aiModel||"gpt-5.6")}</div></div><span>›</span></div></section><section class="card"><h2>Backup</h2><p class="small muted">Backup never includes your API key.</p><div class="wrap"><button class="btn secondary" id="exportBtn">Export JSON</button><label class="btn secondary" style="margin:0;color:var(--text)">Restore<input id="restoreInput" type="file" accept=".json" hidden></label></div></section><section class="card"><div class="kpi-line"><span>Version</span><strong>${VERSION}</strong></div><button class="btn danger" id="eraseAll" style="margin-top:10px">Erase all local data</button></section>`;$("#planBird").onclick=()=>openBirdPlan(phases);$("#targets").onclick=()=>openTargets(settings);$("#goalsBtn").onclick=()=>openGoals(goals,exceptions);$("#aiBtn").onclick=()=>openAI(settings);$("#exportBtn").onclick=exportData;$("#restoreInput").onchange=restoreData;$("#eraseAll").onclick=eraseAll}
+function openBirdPlan(phases){const cur=currentPhase(phases);modal(`<div class="row"><div><div class="eyebrow">Now → Flaine</div><h2>Full programme</h2></div><button class="btn ghost small" data-close>Close</button></div>${phases.sort((a,b)=>a.from.localeCompare(b.from)).map(p=>`<div class="phase ${p.id===cur.id?"current":""}"><h3>${esc(p.name)}</h3><div class="tiny muted">${fmt(p.from)} → ${fmt(p.to)}</div><p class="small">${esc(p.summary)}</p><div class="tiny muted">${p.rules.map(esc).join(' · ')}</div></div>`).join('')}`)}
+function openTargets(s){modal(`<div class="row"><div><div class="eyebrow">Targets</div><h2>Current targets</h2></div><button class="btn ghost small" data-close>Close</button></div><div class="banner">ParrotPal remains the food logger. This app stores targets and judges weekly trends.</div><div class="grid2">${formField("Calorie low","tCL",s.calorieLow,"number")}${formField("Calorie high","tCH",s.calorieHigh,"number")}${formField("External calorie target","tEC",s.externalCalories,"number")}${formField("Protein floor","tPF",s.proteinFloor,"number")}${formField("Preferred protein","tPP",s.proteinPreferred,"number")}${formField("External protein target","tEP",s.externalProtein,"number")}${formField("Steps/day","tSteps",s.stepTarget,"number")}</div><button class="btn block" id="saveTargets">Save targets</button>`);$("#saveTargets").onclick=async()=>{await saveSettings({calorieLow:Number($("#tCL").value),calorieHigh:Number($("#tCH").value),externalCalories:Number($("#tEC").value),proteinFloor:Number($("#tPF").value),proteinPreferred:Number($("#tPP").value),externalProtein:Number($("#tEP").value),stepTarget:Number($("#tSteps").value)});closeModal();render()}}
+function openGoals(goals,exceptions){modal(`<div class="row"><div><div class="eyebrow">Milestones</div><h2>Trips & exceptions</h2></div><button class="btn ghost small" data-close>Close</button></div>${goals.map(g=>`<div class="item"><div class="row"><strong>${esc(g.name)}</strong><span>${fmt(g.date)}</span></div></div>`).join('')}<div class="section"><h2>Exceptional periods</h2></div>${exceptions.map(x=>`<div class="item"><strong>${esc(x.name)}</strong><div class="small muted">${fmt(x.from)} – ${fmt(x.to)} · ${x.projectionMode}</div></div>`).join('')}<div class="banner">Exceptional periods can assume maintenance in projections and be treated cautiously in weekly interpretation.</div>`)}
+function openAI(settings){const has=!!localStorage.getItem("openaiKey");modal(`<div class="row"><div><div class="eyebrow">Local key</div><h2>AI coach</h2></div><button class="btn ghost small" data-close>Close</button></div><div class="banner warn">The API key is stored only in this browser/device and is excluded from backups. Use a dedicated project/key with a low spend limit.</div><div class="field"><label>OpenAI API key</label><input id="aiKey" type="password" value="${has?'••••••••':''}" placeholder="sk-..."></div><div class="field"><label>Model</label><input id="aiModel" value="${esc(settings.aiModel||'gpt-5.6')}"></div><div class="wrap"><button class="btn" id="saveAI">Save locally</button><button class="btn secondary" id="testAI">Test connection</button>${has?'<button class="btn danger" id="removeAI">Remove key</button>':''}</div><div class="rule"></div><h3>Setup</h3><p class="small muted">1. Create a dedicated OpenAI API project and API key.<br>2. Set a low project spending limit.<br>3. Paste the key here once.<br>4. Tap Test connection.<br>5. Weekly Review will then show “Review my week”.</p>`);$("#saveAI").onclick=async()=>{const v=$("#aiKey").value;if(v&&!v.includes('•'))localStorage.setItem('openaiKey',v.trim());await saveSettings({aiModel:$("#aiModel").value.trim()||'gpt-5.6'});alert('Saved locally on this device.')};$("#removeAI")?.addEventListener('click',()=>{localStorage.removeItem('openaiKey');closeModal();render()});$("#testAI").onclick=async()=>{try{await callOpenAI('Reply with exactly: connection ok',true);alert('Connection works.')}catch(e){alert('Connection failed: '+e.message)}}}
+async function callOpenAI(prompt,test=false){const key=localStorage.getItem('openaiKey'),s=await getSettings();if(!key)throw new Error('No API key saved');const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model:s.aiModel||'gpt-5.6',input:prompt,text:{verbosity:test?'low':'medium'}})});if(!r.ok)throw new Error(`${r.status}: ${await r.text()}`);const d=await r.json();if(d.output_text)return d.output_text;return(d.output||[]).flatMap(o=>o.content||[]).map(c=>c.text||'').join('\n')}
+async function getWeekReview(ws){return(await db.all('weeklyReviews')).find(r=>r.weekStart===ws)||null}
+async function compileWeek(ws){const start=parseDate(ws),a=isoDate(start),b=isoDate(addDays(start,6)),[daily,workouts,activities,planned,settings]=await Promise.all([db.all('daily'),db.all('workouts'),db.all('activities'),db.all('planned'),getSettings()]),ds=daily.filter(x=>x.date>=a&&x.date<=b),wsx=workouts.filter(x=>x.date>=a&&x.date<=b),acts=activities.filter(x=>x.date>=a&&x.date<=b),ps=planned.filter(x=>x.date>=a&&x.date<=b);return{weekStart:ws,avgWeight:avg(ds.filter(x=>x.weight).map(x=>x.weight)),avgCalories:avg(ds.filter(x=>x.calories).map(x=>x.calories)),avgProtein:avg(ds.filter(x=>x.protein).map(x=>x.protein)),avgSteps:avg(ds.filter(x=>x.steps).map(x=>x.steps)),loggedDays:ds.length,strength:wsx.length,snow:acts.filter(x=>x.kind==='snow').length,cardio:acts.filter(x=>x.kind==='cardio').length,planned:ps.length,skipped:ps.filter(x=>x.status==='skipped').length,settings}}
+function reviewKpis(s){return`<div class="kpi-line"><span>Avg weight</span><strong>${s.avgWeight?s.avgWeight.toFixed(1)+' kg':'—'}</strong></div><div class="kpi-line"><span>Avg calories</span><strong>${s.avgCalories?Math.round(s.avgCalories):'—'}</strong></div><div class="kpi-line"><span>Avg protein</span><strong>${s.avgProtein?Math.round(s.avgProtein)+' g':'—'}</strong></div><div class="kpi-line"><span>Avg steps</span><strong>${s.avgSteps?Math.round(s.avgSteps).toLocaleString():'—'}</strong></div><div class="kpi-line"><span>Strength / snow / cardio</span><strong>${s.strength} / ${s.snow} / ${s.cardio}</strong></div><div class="kpi-line"><span>Daily logging</span><strong>${s.loggedDays}/7</strong></div>`}
+async function openWeeklyReview(ws){const existing=await getWeekReview(ws),summary=await compileWeek(ws),hasAI=!!localStorage.getItem('openaiKey');modal(`<div class="row"><div><div class="eyebrow">w/c ${fmt(ws)}</div><h2>Weekly review</h2></div><button class="btn ghost small" data-close>Close</button></div><section class="card">${reviewKpis(summary)}</section><div class="field"><label>Snozone — what did you actually do? What clicked or felt difficult? Any instructor feedback?</label><textarea id="rSnow">${esc(existing?.snow||'')}</textarea></div><div class="field"><label>Body — any injuries, niggles, pain, unusual soreness or fatigue?</label><textarea id="rBody">${esc(existing?.body||'')}</textarea></div><div class="field"><label>Food — how has eating actually been outside the numbers? Hunger, cravings, meals out, alcohol, tracking accuracy?</label><textarea id="rFood">${esc(existing?.food||'')}</textarea></div><div class="field"><label>Life — holiday, work, sleep, illness, motivation, social stuff?</label><textarea id="rLife">${esc(existing?.life||'')}</textarea></div><div class="field"><label>Anything else?</label><textarea id="rOther">${esc(existing?.other||'')}</textarea></div><div class="field"><label>Was this a normal week?</label><select id="rNormal"><option value="normal">Yes — broadly normal</option><option value="holiday" ${existing?.weekType==='holiday'?'selected':''}>Holiday</option><option value="illness" ${existing?.weekType==='illness'?'selected':''}>Illness</option><option value="christmas" ${existing?.weekType==='christmas'?'selected':''}>Christmas</option><option value="travel" ${existing?.weekType==='travel'?'selected':''}>Travel</option><option value="work" ${existing?.weekType==='work'?'selected':''}>Work disruption</option><option value="injury" ${existing?.weekType==='injury'?'selected':''}>Injury</option><option value="other" ${existing?.weekType==='other'?'selected':''}>Other</option></select></div><div class="wrap"><button class="btn" id="saveReview">Save review</button>${hasAI?'<button class="btn secondary" id="aiReview">✨ Review my week</button>':'<button class="btn ghost" id="aiSetupReview">Set up AI coach</button>'}</div>${existing?.aiSummary?`<div class="section"><h2>AI review</h2></div><section class="card"><span class="chip ${existing.aiStatus==='on_track'?'good':existing.aiStatus==='adjust'?'warn':''}">${existing.aiStatus||'review'}</span><p>${esc(existing.aiSummary)}</p><div class="small muted" style="white-space:pre-wrap">${esc(existing.aiDetails||'')}</div></section>`:''}`);$("#saveReview").onclick=()=>saveReviewData(ws,summary,existing,false);$("#aiSetupReview")?.addEventListener('click',async()=>{closeModal();openAI(await getSettings())});$("#aiReview")?.addEventListener('click',async()=>{const rev=await saveReviewData(ws,summary,existing,true);$("#aiReview").disabled=true;$("#aiReview").textContent='Reviewing…';try{const text=await callOpenAI(await weeklyPrompt(rev,summary)),parsed=parseAIReview(text);rev.aiSummary=parsed.summary;rev.aiDetails=parsed.details;rev.aiStatus=parsed.status;rev.aiRaw=text;rev.createdDate=isoDate();await db.put('weeklyReviews',rev);closeModal();openWeeklyReview(ws)}catch(e){alert('AI review failed: '+e.message)}})}
+async function saveReviewData(ws,summary,existing,returnOnly){const o={id:existing?.id,weekStart:ws,createdDate:isoDate(),summary,snow:$("#rSnow").value,body:$("#rBody").value,food:$("#rFood").value,life:$("#rLife").value,other:$("#rOther").value,weekType:$("#rNormal").value,aiSummary:existing?.aiSummary||'',aiDetails:existing?.aiDetails||'',aiStatus:existing?.aiStatus||''};if(existing)await db.put('weeklyReviews',o);else o.id=await db.add('weeklyReviews',o);if(returnOnly)return o;closeModal();render();return o}
+async function weeklyPrompt(review,summary){const[settings,phases,reviews,daily]=await Promise.all([getSettings(),db.all('phases'),db.all('weeklyReviews'),db.all('daily')]),phase=currentPhase(phases),recent=reviews.filter(r=>r.weekStart<review.weekStart).sort((a,b)=>b.weekStart.localeCompare(a.weekStart)).slice(0,4),weights=daily.filter(x=>x.weight).sort((a,b)=>a.date.localeCompare(b.date)),trend=weightTrend(weights),tdee=estimateTDEE(daily);return`You are reviewing one week of a personal ski-preparation and body-composition programme. Be conservative about changing a plan based on one noisy week. Treat holidays, Christmas, illness, travel and untracked food as context, not moral failure. Do not diagnose injuries. If pain/injury is reported, recommend reducing aggravating load and appropriate professional assessment if persistent or severe.\n\nGOALS\n- Lose body fat while preserving/building strength.\n- Prepare for Les Carroz on 2027-01-09.\n- Prepare for Flaine on 2027-03-27.\n- Keep a full-body A/B strength structure while progressively biasing ski-specific qualities.\n\nCURRENT PHASE\n${phase.name}: ${phase.summary}\nRules: ${phase.rules.join('; ')}\n\nCURRENT TARGETS\nCalories: ${settings.calorieLow}-${settings.calorieHigh} kcal/day (external current target ${settings.externalCalories})\nProtein floor: ${settings.proteinFloor} g, preferred ${settings.proteinPreferred} g\nSteps: ${settings.stepTarget}/day\nEstimated TDEE: ${tdee?Math.round(tdee):'insufficient data'}\nRecent weight rate: ${trend.weeklyRate==null?'insufficient data':trend.weeklyRate.toFixed(2)+' kg/week'}\n\nTHIS WEEK\n${JSON.stringify(summary,null,2)}\n\nUSER CONTEXT\nWeek type: ${review.weekType}\nSnozone: ${review.snow||'none'}\nBody/injury/recovery: ${review.body||'none'}\nFood/appetite/context: ${review.food||'none'}\nLife: ${review.life||'none'}\nOther: ${review.other||'none'}\n\nRECENT REVIEW MEMORY\n${recent.map(r=>`${r.weekStart}: ${r.aiSummary||'no AI summary'} | body=${r.body||''} | snow=${r.snow||''}`).join('\n')||'none'}\n\nReturn concise plain text in EXACTLY this structure:\nSTATUS: on_track OR watch OR adjust\nSUMMARY: one short paragraph\nMATTERS:\n- bullet\n- bullet\nNEXT_WEEK:\n- up to three specific recommendations\nWATCH:\n- one or two things that do not yet justify a change\nPROPOSED_CHANGES:\n- only actual target/template/schedule changes worth asking the user to approve; otherwise write "none"\n\nDo not prescribe aggressive calorie cuts from one week. Prefer multi-week trend evidence.`}
+function parseAIReview(t){const get=(key)=>{const keys=['STATUS','SUMMARY','MATTERS','NEXT_WEEK','WATCH','PROPOSED_CHANGES'],i=t.indexOf(key+':');if(i<0)return'';let e=t.length;for(const k of keys)if(k!==key){const j=t.indexOf('\n'+k+':',i+key.length+1);if(j>=0)e=Math.min(e,j)}return t.slice(i+key.length+1,e).trim()};return{status:(get('STATUS')||'watch').split(/\s/)[0],summary:get('SUMMARY'),details:`MATTERS\n${get('MATTERS')}\n\nNEXT WEEK\n${get('NEXT_WEEK')}\n\nWATCH\n${get('WATCH')}\n\nPROPOSED CHANGES\n${get('PROPOSED_CHANGES')}`}}
+async function weekStats(ws){const a=isoDate(ws),b=isoDate(addDays(ws,6)),[planned,workouts,activities]=await Promise.all([db.all('planned'),db.all('workouts'),db.all('activities')]),ps=planned.filter(p=>p.date>=a&&p.date<=b),w=workouts.filter(x=>x.date>=a&&x.date<=b),acts=activities.filter(x=>x.date>=a&&x.date<=b);return{label:`${fmt(a)}–${fmt(b)}`,strength:w.length,snow:acts.filter(x=>x.kind==='snow').length,cardio:acts.filter(x=>x.kind==='cardio').length,planned:ps.length,completed:ps.filter(x=>x.status==='done').length}}
+async function exportData(){const names=['settings','goals','phases','exercises','templates','planned','workouts','daily','activities','weeklyReviews','exceptions'],out={version:VERSION,exportedAt:new Date().toISOString(),stores:{}};for(const n of names)out.stores[n]=await db.all(n);const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`gareth-training-${isoDate()}.json`;a.click();URL.revokeObjectURL(url)}
+async function restoreData(e){const f=e.target.files[0];if(!f)return;const data=JSON.parse(await f.text());if(!confirm('Replace current local data with this backup?'))return;for(const[name,items]of Object.entries(data.stores||{})){if(!db.db.objectStoreNames.contains(name))continue;await db.clear(name);for(const x of items){const c=structuredClone(x);delete c.id;await db.add(name,c)}}alert('Restored.');render()}
+async function eraseAll(){if(!confirm('Erase all local training data?')||!confirm('Really erase everything?'))return;for(const n of ['settings','goals','phases','exercises','templates','planned','workouts','daily','activities','weeklyReviews','exceptions'])await db.clear(n);localStorage.removeItem('openaiKey');await seed();render()}
+function modal(html){$("#overlay").innerHTML=`<div class="modal"><div class="sheet">${html}</div></div>`;$$('[data-close]').forEach(b=>b.onclick=closeModal)} function closeModal(){$("#overlay").innerHTML=''}
+(async()=>{await db.init();await seed();if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js');render()})();
