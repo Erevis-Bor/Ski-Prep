@@ -1,19 +1,16 @@
-# Slope v4.5
+# Slope v4.5.1
 
-This release closes the intelligence loop rather than adding more logging.
+Hotfix for Coach.
 
-## New
-- Deterministic progression prescriptions using rep range, RIR, progression mode and exercise increments.
-- Editable progression modes: double progression, reps/quality only, manual/technique-led, rehab/manual.
-- Compact multi-month Coach long view: monthly weight, phase adherence, lift trends, snow volume, recurring skip reasons and moved-session patterns.
-- Completed workout detail view from Day Record and Progress.
-- Strength trend rows and estimated-1RM comparison charts.
-- Last three Snozone notes are surfaced before the next snow session.
-- One-time phase transition card explains what changes when a new phase starts.
-- Today shows training already completed that day.
-- Visible backup nudge after 21 days / when no backup exists.
-- Restore preview before destructive replacement.
-- Failed Coach messages restore your typed text as well as offering Retry.
+## Fixed
+- Restores `parseCoachReply()` and `friendlyAIError()`, which were accidentally removed during the v4.5 Coach-context refactor.
+- This was why OpenAI could return successfully but no Coach reply appeared.
+- Failed messages now show a visible inline error and retry without duplicating the user message.
+- Outgoing Coach messages are persisted before the network request.
+- Empty/incomplete model responses are treated as errors rather than rendering a blank bubble.
+- Coach output allowance increased for the richer long-view prompt.
+- Errors are scrolled into view instead of disappearing below the composer.
 
-## Upgrade
-Upload these files to the same GitHub Pages origin. Take a backup first. IndexedDB and the local OpenAI key are preserved by keeping the same URL.
+All v4.5 progression, long-view, history, Snozone recall and backup features remain.
+
+Upload to the same GitHub Pages origin so local data and the API key carry forward.
