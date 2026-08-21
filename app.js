@@ -1,4 +1,4 @@
-const VERSION='4.5.0';
+const VERSION='4.5.1';
 const DB_NAME='garethTrainingV3'; // deliberately preserved so v3 data survives an in-place upgrade
 const STORE_NAMES=['settings','goals','phases','exercises','templates','planned','planAudit','workouts','daily','activities','weeklyReviews','aiReviews','exceptions'];
 const GOALS=[{id:'lescarroz',name:'Les Carroz',date:'2027-01-09'},{id:'flaine',name:'Flaine',date:'2027-03-27'}];
@@ -318,7 +318,56 @@ function memoryField(label,id,a){return `<div class="field"><label>${label}</lab
 async function startWeeklyCheckIn(ws){const existing=(await db.all('weeklyReviews')).find(r=>r.weekStart===ws);if(existing){openCoachChat(true,ws);return}showSheet(`<div class="sheethead"><div><div class="eyebrow">w/c ${fmt(ws)}</div><h2>Check in</h2></div><button class="btn small ghost" data-close>Close</button></div><p class="small muted">I already have your weight, food summaries, steps, planned/completed sessions, workout detail, Snozone/cardio logs and any notes you wrote during the week.</p><div class="field"><label>How did the week feel?</label><div class="moods" id="moods">${['Great','Good','Okay','Rough','Awful'].map(x=>`<button class="mood" data-mood="${x}">${x}</button>`).join('')}</div></div><div class="field"><label>Anything the logs won’t tell me? <span class="muted">Optional.</span></label><textarea id="weekContext" placeholder="Work was chaos. Dinner out Saturday wasn’t tracked. I’m ridiculously hungry. Or just leave this blank."></textarea></div><button class="btn blue block" id="beginCheck">Talk it through</button>`);let mood='Okay';$$('[data-mood]').forEach(b=>b.onclick=()=>{$$('[data-mood]').forEach(x=>x.classList.remove('on'));b.classList.add('on');mood=b.dataset.mood});$$('[data-mood]')[2]?.classList.add('on');$('#beginCheck').onclick=async()=>{const context=$('#weekContext').value.trim();await db.add('weeklyReviews',{weekStart:ws,createdDate:isoDate(),mood,context,coachResponse:''});closeSheet();await openCoachChat(true,ws,{mood,context,initial:true})}}
 async function getCoachThread(){let xs=(await db.all('aiReviews')).filter(x=>x.kind==='coachThread').sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));if(xs[0])return xs[0];const id=await db.add('aiReviews',{kind:'coachThread',updatedAt:new Date().toISOString(),messages:[]});return await db.get('aiReviews',id)}
 async function openCoachChat(isWeekly=false,ws=isoDate(monday()),opts={}){if(!localStorage.getItem('openaiKey')){toast('Connect AI in More first');return}const thread=await getCoachThread();showSheet(`<div class="sheethead"><div><div class="eyebrow">${isWeekly?'Weekly check-in':'Coach'}</div><h2>${isWeekly?`w/c ${fmt(ws)}`:'Talk it through'}</h2></div><button class="btn small ghost" data-close>Close</button></div><div class="chat" id="chat">${thread.messages.filter(m=>!m.hidden).slice(-12).map(m=>`<div class="msg ${m.role}">${esc(m.content)}</div>`).join('')}</div><div class="composer"><div class="composer-row"><textarea id="coachInput" placeholder="Say what’s on your mind…"></textarea><button class="btn blue" id="sendCoach">↑</button></div></div>`,{full:true});const chat=$('#chat');chat.scrollTop=chat.scrollHeight;$('#sendCoach').onclick=()=>sendCoachMessage(isWeekly,ws);$('#coachInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendCoachMessage(isWeekly,ws)}});if(opts.initial){const hidden=`WEEKLY CHECK-IN START. Mood: ${opts.mood}. Extra context: ${opts.context||'none'}. Review the week context you have been given. Do not recite the dashboard. If one or two missing facts would materially change your judgement, ask concise questions. Otherwise give your coaching take and how to approach next week.`;await sendCoachMessage(true,ws,hidden,true)}}
-async function sendCoachMessage(isWeekly,ws,override=null,hiddenUser=false){const inp=$('#coachInput'),text=override||inp?.value.trim();if(!text)return;if(inp)inp.value='';const thread=await getCoachThread();thread.messages.push({role:'user',content:text,hidden:hiddenUser,at:new Date().toISOString()});if(!hiddenUser)$('#chat')?.insertAdjacentHTML('beforeend',`<div class="msg user">${esc(text)}</div>`);$('#chat')?.insertAdjacentHTML('beforeend','<div class="msg assistant" id="thinking">Thinking…</div>');try{const key=`${isWeekly?'weekly':'open'}:${ws}`,sig=await coachContextSignature(ws);let sess=thread.sessions?.[key],resp;if(!sess?.responseId||sess.contextSignature!==sig){const first=await coachInitialPayload(thread.messages,isWeekly,ws);resp=await callOpenAI(first.input,{instructions:first.instructions});thread.sessions={...(thread.sessions||{}),[key]:{responseId:resp.id,startedAt:new Date().toISOString(),contextSignature:sig}}}else{resp=await callOpenAI(text,{previousResponseId:sess.responseId,instructions:coachContinuationInstructions()});thread.sessions[key].responseId=resp.id}const {reply,memory}=parseCoachReply(resp.text);$('#thinking')?.remove();$('#chat')?.insertAdjacentHTML('beforeend',`<div class="msg assistant">${esc(reply)}</div>`);thread.messages.push({role:'assistant',content:reply,at:new Date().toISOString()});thread.messages=thread.messages.slice(-30);thread.updatedAt=new Date().toISOString();await db.put('aiReviews',thread);if(memory){const settings=await getSettings(),current=settings.coachMemory||{themes:[],testing:[],decisions:[],watch:[]},merged={...current};for(const k of ['themes','testing','decisions','watch'])if(Array.isArray(memory[k])&&memory[k].length)merged[k]=memory[k];await saveSettings({coachMemory:merged})}if(isWeekly){let review=(await db.all('weeklyReviews')).find(r=>r.weekStart===ws);if(review){review.coachResponse=reply;review.updatedAt=isoDate();await db.put('weeklyReviews',review)}}const chat=$('#chat');if(chat)chat.scrollTop=chat.scrollHeight}catch(e){$('#thinking')?.remove();if(inp&&!hiddenUser)inp.value=text;$('#chat')?.insertAdjacentHTML('beforeend',`<div class="msg assistant">I couldn't reach the coach: ${esc(friendlyAIError(e))} <button class="linkbtn" id="retryCoach">Try again</button></div>`);$('#retryCoach')?.addEventListener('click',()=>sendCoachMessage(isWeekly,ws,text,hiddenUser))}}
+async function sendCoachMessage(isWeekly,ws,override=null,hiddenUser=false,retryExisting=false){
+  const inp=$('#coachInput'),text=override||inp?.value.trim();if(!text)return;
+  if(inp&&!retryExisting)inp.value='';
+  const thread=await getCoachThread();
+  if(!retryExisting){
+    thread.messages.push({role:'user',content:text,hidden:hiddenUser,at:new Date().toISOString()});
+    thread.messages=thread.messages.slice(-30);thread.updatedAt=new Date().toISOString();
+    await db.put('aiReviews',thread);
+    if(!hiddenUser)$('#chat')?.insertAdjacentHTML('beforeend',`<div class="msg user">${esc(text)}</div>`);
+  }
+  $('#coachError')?.remove();$('#thinking')?.remove();
+  $('#chat')?.insertAdjacentHTML('beforeend','<div class="msg assistant" id="thinking">Thinking…</div>');
+  const scrollChat=()=>{const c=$('#chat');if(c)c.scrollTop=c.scrollHeight};scrollChat();
+  try{
+    const key=`${isWeekly?'weekly':'open'}:${ws}`,sig=await coachContextSignature(ws);
+    let sess=thread.sessions?.[key],resp;
+    if(!sess?.responseId||sess.contextSignature!==sig){
+      const first=await coachInitialPayload(thread.messages,isWeekly,ws);
+      resp=await callOpenAI(first.input,{instructions:first.instructions});
+      thread.sessions={...(thread.sessions||{}),[key]:{responseId:resp.id,startedAt:new Date().toISOString(),contextSignature:sig}}
+    }else{
+      resp=await callOpenAI(text,{previousResponseId:sess.responseId,instructions:coachContinuationInstructions()});
+      thread.sessions[key].responseId=resp.id
+    }
+    if(!resp.text?.trim())throw new Error('Empty response from OpenAI');
+    const {reply,memory}=parseCoachReply(resp.text);
+    if(!reply)throw new Error('Empty response from OpenAI');
+    $('#thinking')?.remove();
+    $('#chat')?.insertAdjacentHTML('beforeend',`<div class="msg assistant">${esc(reply)}</div>`);
+    thread.messages.push({role:'assistant',content:reply,at:new Date().toISOString()});
+    thread.messages=thread.messages.slice(-30);thread.updatedAt=new Date().toISOString();
+    await db.put('aiReviews',thread);
+    if(memory){
+      const settings=await getSettings(),current=settings.coachMemory||{themes:[],testing:[],decisions:[],watch:[]},merged={...current};
+      for(const k of ['themes','testing','decisions','watch'])if(Array.isArray(memory[k])&&memory[k].length)merged[k]=memory[k];
+      await saveSettings({coachMemory:merged})
+    }
+    if(isWeekly){
+      let review=(await db.all('weeklyReviews')).find(r=>r.weekStart===ws);
+      if(review){review.coachResponse=reply;review.updatedAt=isoDate();await db.put('weeklyReviews',review)}
+    }
+    scrollChat()
+  }catch(e){
+    $('#thinking')?.remove();
+    $('#chat')?.insertAdjacentHTML('beforeend',`<div class="msg assistant coach-error" id="coachError">${esc(friendlyAIError(e))} <button class="linkbtn" id="retryCoach">Try again</button></div>`);
+    $('#retryCoach')?.addEventListener('click',()=>sendCoachMessage(isWeekly,ws,text,hiddenUser,true));
+    scrollChat();
+    console.error('Slope Coach error',e)
+  }
+}
 function hashString(v){let h=2166136261;for(let i=0;i<v.length;i++){h^=v.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(36)}
 async function coachContextSignature(ws){return hashString(JSON.stringify(await compileCoachContext(ws)))}
 function coachContinuationInstructions(){return`Continue as Gareth's long-term training and ski-preparation coach. Be conversational, grounded and supportive without becoming a dashboard. Use the established context from the previous response. Ask only targeted questions when needed. At the end append the hidden memory block exactly as previously instructed.`}
@@ -346,7 +395,49 @@ async function compileCoachContext(ws){
   return{period:{from:a,to:b},daily:ds.map(x=>({date:x.date,weight:x.weight,calories:x.calories,protein:x.protein,steps:x.steps,note:x.note})),averages:{weight:avg(ds.filter(x=>x.weight).map(x=>x.weight)),calories:avg(ds.filter(x=>x.calories).map(x=>x.calories)),protein:avg(ds.filter(x=>x.protein).map(x=>x.protein)),steps:avg(ds.filter(x=>x.steps).map(x=>x.steps)),loggedDays:ds.length},planned:ps.map(x=>({date:x.date,title:x.title,kind:x.kind,status:x.status,skipReason:x.skipReason,skipNote:x.skipNote,note:x.note})),workouts:ww.map(w=>({date:w.date,name:w.templateName,note:w.note,exercises:w.items?.map(it=>({name:it.name,sets:it.sets?.filter(s=>s.type==='work').map(s=>({weight:s.weight,reps:s.reps,rir:s.rir,done:s.done}))}))})),activities:aa.map(x=>({date:x.date,kind:x.kind,minutes:x.minutes,effort:x.effort,legFatigue:x.legFatigue,note:x.note})),scheduleChanges:audit.filter(x=>{const day=(x.after?.date||x.before?.date||x.toDate||x.fromDate||x.date);return day&&day>=a&&day<=b}).map(x=>({action:x.action,title:x.title,fromDate:x.fromDate,toDate:x.toDate,daysMoved:x.daysMoved,reason:x.reason,method:x.method,source:x.source,originalDate:x.before?.originalDate||x.after?.originalDate})),recentScheduleChanges:audit.filter(x=>new Date(x.at)>=addDays(start,-28)&&new Date(x.at)<addDays(end,1)).map(x=>({at:x.at,action:x.action,title:x.title,fromDate:x.fromDate,toDate:x.toDate,reason:x.reason,method:x.method,source:x.source})).slice(-30),previousReviews:prev,longView:buildLongView({daily,planned,audit,workouts,acts,phases})}
 }
 
-async function callOpenAI(input,{previousResponseId=null,instructions=null,maxOutputTokens=1400}={}){const key=localStorage.getItem('openaiKey'),s=await getSettings();if(!key)throw new Error('No API key saved');const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),60000);let r;try{const body={model:s.aiModel||'gpt-5.6',input,max_output_tokens:maxOutputTokens,text:{verbosity:'medium'},store:true};if(previousResponseId)body.previous_response_id=previousResponseId;if(instructions)body.instructions=instructions;r=await fetch('https://api.openai.com/v1/responses',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(body)})}finally{clearTimeout(timeout)}if(!r.ok)throw new Error(`${r.status}: ${await r.text()}`);const d=await r.json();return{id:d.id,text:d.output_text||(d.output||[]).flatMap(o=>o.content||[]).map(c=>c.text||'').join('\n')}}
+
+function parseCoachReply(raw=''){
+  raw=String(raw||'');
+  const m=raw.match(/`*\s*<<<MEMORY_JSON>>>\s*`*([\s\S]*?)`*\s*<<<END_MEMORY>>>\s*`*/);
+  let memory=null;
+  if(m){try{memory=JSON.parse(m[1].trim())}catch{}}
+  const reply=raw.replace(/`*\s*<<<MEMORY_JSON>>>\s*`*[\s\S]*?`*\s*<<<END_MEMORY>>>\s*`*/,'').trim();
+  return{reply,memory}
+}
+function friendlyAIError(e){
+  const msg=String(e?.message||e||'Unknown error');
+  if(/AbortError|aborted|timeout/i.test(msg))return'The coach request timed out. Try again.';
+  if(/401|invalid_api_key/i.test(msg))return'API key rejected. Replace it in More → AI Coach.';
+  if(/429|quota|billing|insufficient_quota/i.test(msg))return'API quota or billing limit reached.';
+  if(/model.*not|model.*available|does not exist/i.test(msg))return'The selected model is not available to this API project.';
+  if(/empty response/i.test(msg))return'The model returned no visible reply. Try again.';
+  if(/max_output_tokens|incomplete/i.test(msg))return'The coach ran out of response room. Try again.';
+  return msg.slice(0,220)
+}
+
+async function callOpenAI(input,{previousResponseId=null,instructions=null,maxOutputTokens=4000}={}){
+  const key=localStorage.getItem('openaiKey'),settings=await getSettings();
+  if(!key)throw new Error('No API key saved');
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),60000);
+  let r;
+  try{
+    const body={model:settings.aiModel||'gpt-5.6',input,max_output_tokens:maxOutputTokens,text:{verbosity:'medium'},store:true};
+    if(previousResponseId)body.previous_response_id=previousResponseId;
+    if(instructions)body.instructions=instructions;
+    r=await fetch('https://api.openai.com/v1/responses',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(body)})
+  }catch(e){
+    if(e?.name==='AbortError')throw new Error('Coach request timed out');
+    throw e
+  }finally{clearTimeout(timeout)}
+  if(!r.ok)throw new Error(`${r.status}: ${await r.text()}`);
+  const d=await r.json();
+  const text=d.output_text||(d.output||[]).flatMap(o=>o.content||[]).filter(c=>c.type==='output_text'||typeof c.text==='string').map(c=>c.text||'').join('\n');
+  if(!text.trim()){
+    const reason=d.incomplete_details?.reason||d.status||'empty response';
+    throw new Error(`Empty response from OpenAI (${reason})`)
+  }
+  return{id:d.id,text,status:d.status}
+}
 async function renderProgress(){
   const [daily,workouts,acts,goals,exceptions,settings]=await Promise.all([db.all('daily'),db.all('workouts'),db.all('activities'),db.all('goals'),db.all('exceptions'),getSettings()]);
   const weights=daily.filter(x=>x.weight).sort((a,b)=>a.date.localeCompare(b.date)),trend=weightTrend(weights),tdee=estimateTDEE(daily),bmr=estimateBMR(settings,trend.avg7||trend.current),gs=[...goals].sort((a,b)=>a.date.localeCompare(b.date)),liftRows=buildLiftRows(workouts).slice(0,6);
