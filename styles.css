@@ -74,3 +74,17 @@ input,textarea,select{font-size:16px}
 .backup-nag{background:#fff0cf;border:1px solid #e3c57f;border-radius:18px;padding:14px;margin-bottom:12px;display:grid;gap:5px}.backup-nag strong{font-size:14px}.backup-nag span{font-size:12px;color:#655a45}.backup-nag .btn{justify-self:start;margin-top:5px}
 
 .coach-error{background:#fff0eb!important;color:#713e34!important;border:1px solid #e7b8aa}.coach-error .linkbtn{color:#8a493b}
+
+/* v4.6 */
+.library-tools{display:grid;grid-template-columns:1fr 140px;gap:8px;margin-bottom:12px;position:sticky;top:-1px;z-index:2;background:var(--paper);padding:2px 0 9px}
+.coach-pill{background:#eef1fb;color:#4d5e91;border-color:#d8dff2;font-size:9px}
+.upcoming-card{background:linear-gradient(135deg,#f4f7ff,#fbf7ef);border-color:#d8deef}
+.upcoming-loading{margin-top:12px;background:#f7f8fb}
+.coach-review-copy{font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.55;padding:4px 2px 12px;color:var(--ink)}
+.proposal-card{border:1px solid #d8d4cc;background:#fffdf9;border-radius:18px;padding:14px;margin-bottom:10px}
+.proposal-card.accepted{background:#f2f8f3;border-color:#c7ddcd}
+.proposal-card.dismissed{opacity:.68;background:#f7f5f1}
+.proposal-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.proposal-change{font-size:13px;font-weight:800;color:var(--blue);margin-top:8px;line-height:1.4}
+.no-change-card{background:#f3f8f4;border-color:#cfdfd2}
+@media(max-width:520px){.library-tools{grid-template-columns:1fr}.library-tools select{width:100%}}
