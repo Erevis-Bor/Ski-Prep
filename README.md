@@ -1,16 +1,52 @@
-# Slope v4.5.1
+# Slope v4.6
 
-Hotfix for Coach.
+## Exercise library restored
+Slope now restores the broad exercise library from the original proof-of-concept without overwriting exercises you have already edited or created.
 
-## Fixed
-- Restores `parseCoachReply()` and `friendlyAIError()`, which were accidentally removed during the v4.5 Coach-context refactor.
-- This was why OpenAI could return successfully but no Coach reply appeared.
-- Failed messages now show a visible inline error and retry without duplicating the user message.
-- Outgoing Coach messages are persisted before the network request.
-- Empty/incomplete model responses are treated as errors rather than rendering a blank bubble.
-- Coach output allowance increased for the richer long-view prompt.
-- Errors are scrolled into view instead of disappearing below the composer.
+The migration adds missing exercises by name only, including the old push, pull, lower-body, calf/rehab and core library, while retaining Slope's newer slow step-down and lateral-lunge entries.
 
-All v4.5 progression, long-view, history, Snozone recall and backup features remain.
+The library now has:
+- search by name, category or equipment
+- category filtering
+- search when adding an exercise to a template
+- custom exercise create/edit/delete as before
 
-Upload to the same GitHub Pages origin so local data and the API key carry forward.
+## Review upcoming week
+Coach now has a separate **Review upcoming week** action. It does not require completing a weekly check-in.
+
+Coach receives:
+- the exact strength sessions planned for the coming Monday–Sunday
+- exercise order
+- phase-adjusted work-set count
+- rep ranges and targets
+- rest times
+- warm-ups
+- current deterministic weight prescription
+- last sets and RIR
+- recent workout and Snozone notes
+- Coach memory
+- long-view trends
+- previous upcoming-week review decisions
+- the available exercise library
+
+The programming prompt explicitly treats **no changes** as a successful review and caps changes at four.
+
+Coach may propose:
+- changing sets/reps/target/rest/weight/warm-ups
+- swapping an exercise
+- adding an exercise
+- removing an exercise
+
+Every proposal is shown with **Apply / Dismiss**.
+
+### Important behaviour
+Accepted changes modify **that planned week's occurrence only**. They do not rewrite Ski A/Ski B or another master template.
+
+Coach-originated changes and dismissed proposals are audited so future coaching can see what was tried or rejected.
+
+Planned sessions with approved changes display a small `coach adjusted` marker.
+
+## Upgrade
+Upload the files to the same GitHub Pages origin. Keep the same URL so IndexedDB and your locally stored OpenAI key carry over.
+
+Take a backup before upgrading.
